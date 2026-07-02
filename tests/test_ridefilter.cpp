@@ -108,6 +108,46 @@ TEST_CASE("applyDisplayOptions: favorites first, wait-desc within partitions") {
     CHECK(rides[3].id == 4);   // 20
 }
 
+TEST_CASE("applyDisplayOptions: empty list is a no-op") {
+    RideInfo rides[1];
+    int count = 0;
+    RideDisplayOptions opt; opt.skipClosed = true; opt.sortMode = SORT_MODE_WAIT_DESC;
+    applyDisplayOptions(rides, count, opt);
+    CHECK(count == 0);
+}
+
+TEST_CASE("applyDisplayOptions: single ride passes through every option") {
+    RideInfo rides[1] = { mkRide(1, "A", 20, true, true) };
+    int count = 1;
+    RideDisplayOptions opt;
+    opt.sortMode = SORT_MODE_WAIT_DESC; opt.skipClosed = true; opt.minWaitMinutes = 5;
+    applyDisplayOptions(rides, count, opt);
+    CHECK(count == 1);
+    CHECK(rides[0].id == 1);
+}
+
+TEST_CASE("applyDisplayOptions: wait equal to minWait is kept (>= threshold)") {
+    RideInfo rides[2] = { mkRide(1, "A", 15, true), mkRide(2, "B", 14, true) };
+    int count = 2;
+    RideDisplayOptions opt; opt.minWaitMinutes = 15;
+    applyDisplayOptions(rides, count, opt);
+    CHECK(count == 1);
+    CHECK(rides[0].id == 1);
+}
+
+TEST_CASE("applyDisplayOptions: closed favorite is dropped by skipClosed") {
+    // Filtering runs before the favorites-first sort — a closed favorite
+    // doesn't sneak back in.
+    RideInfo rides[3] = { mkRide(1, "A", 30, true), mkRide(2, "B", -1, false, true),
+                          mkRide(3, "C", 10, true) };
+    int count = 3;
+    RideDisplayOptions opt; opt.skipClosed = true;
+    applyDisplayOptions(rides, count, opt);
+    CHECK(count == 2);
+    CHECK(rides[0].id == 1);
+    CHECK(rides[1].id == 3);
+}
+
 TEST_CASE("applyDisplayOptions: filter and sort combine") {
     RideInfo rides[5] = { mkRide(1, "A", 5, true), mkRide(2, "B", -1, false),
                           mkRide(3, "C", 25, true, true), mkRide(4, "D", 70, true),

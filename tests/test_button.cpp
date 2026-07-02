@@ -71,6 +71,27 @@ TEST_CASE("Button: polling that skips straight past 20 s fires HoldReset") {
     CHECK(b.update(false, 31040) == ButtonEvent::None);
 }
 
+TEST_CASE("Button: a release bounce during a hold does not cancel the hold") {
+    Button b;
+    b.update(true, 0); b.update(true, 40);          // stable press at t=0
+    // Contact bounce: raw release for 10 ms in the middle of the hold
+    b.update(false, 5000);
+    b.update(true, 5010);
+    CHECK(b.update(true, 5050)  == ButtonEvent::None);
+    // Hold timing still measured from the original press edge
+    CHECK(b.update(true, 10000) == ButtonEvent::HoldWarning);
+}
+
+TEST_CASE("Button: two quick short presses both register") {
+    Button b;
+    b.update(true, 0);    b.update(true, 40);
+    b.update(false, 100);
+    CHECK(b.update(false, 140) == ButtonEvent::Short);
+    b.update(true, 300);  b.update(true, 340);
+    b.update(false, 400);
+    CHECK(b.update(false, 440) == ButtonEvent::Short);
+}
+
 TEST_CASE("Button: back-to-back presses each yield an event") {
     Button b;
     // First: short press

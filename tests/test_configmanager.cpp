@@ -173,6 +173,60 @@ TEST_CASE("isRideFavorite: cache re-built after saveRideFavorites") {
     CHECK_FALSE(mgr.isRideFavorite(2, 7));
 }
 
+TEST_CASE("isRideFavorite: malformed favorites JSON — nothing is a favorite") {
+    ConfigManager mgr;
+    mgr.saveRideFavorites("{not valid json");
+    CHECK_FALSE(mgr.isRideFavorite(1, 10));
+}
+
+TEST_CASE("isRideEnabled: malformed filter JSON — everything stays enabled") {
+    ConfigManager mgr;
+    mgr.saveRideFilters("{broken");
+    CHECK(mgr.isRideEnabled(1, 10));
+    CHECK(mgr.isRideEnabled(99, 42));
+}
+
+TEST_CASE("parseEnabledParks: JSON object instead of array returns false") {
+    ConfigManager mgr;
+    std::vector<int> ids; std::vector<String> names;
+    CHECK_FALSE(mgr.parseEnabledParks(R"({"id":1,"name":"Park"})", ids, names));
+    CHECK(ids.empty());
+}
+
+// ── load() persistence round-trip ─────────────────────────────────────────────
+
+TEST_CASE("load: saved settings survive a reload from Preferences") {
+    ConfigManager mgr;
+    mgr.saveTimings(60000, 5000, 15000, 30000);
+    mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false);
+    mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 10);
+    mgr.saveEnabledParks(R"([{"id":4,"name":"Paris"}])");
+    mgr.saveRideFilters(R"({"4":[1,2]})");
+    mgr.saveRideFavorites(R"({"4":[2]})");
+
+    mgr.load();   // re-read everything from the (mock) NVS
+
+    const auto& cfg = mgr.getConfig();
+    CHECK(cfg.apiRefreshInterval == 60000);
+    CHECK(cfg.rotateInterval     == 5000);
+    CHECK(cfg.brightness         == 55);
+    CHECK(cfg.quietHoursEnabled  == true);
+    CHECK(cfg.quietStartMin      == 20 * 60);
+    CHECK(cfg.quietEndMin        == 8 * 60);
+    CHECK(cfg.quietBrightness    == 25);
+    CHECK(cfg.ledEnabled         == false);
+    CHECK(cfg.sortMode           == SORT_MODE_WAIT_DESC);
+    CHECK(cfg.favoritesFirst     == false);
+    CHECK(cfg.skipClosedRides    == true);
+    CHECK(cfg.minWaitMinutes     == 10);
+    REQUIRE(cfg.enabledParkIds.size() == 1);
+    CHECK(cfg.enabledParkIds[0]  == 4);
+    CHECK(mgr.isRideEnabled(4, 1));
+    CHECK_FALSE(mgr.isRideEnabled(4, 3));
+    CHECK(mgr.isRideFavorite(4, 2));
+    CHECK_FALSE(mgr.isRideFavorite(4, 1));
+}
+
 // ── factoryReset ──────────────────────────────────────────────────────────────
 
 TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {

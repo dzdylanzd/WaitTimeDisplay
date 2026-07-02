@@ -152,6 +152,54 @@ TEST_CASE("fetchRideData: malformed JSON returns false") {
     CHECK_FALSE(api.fetchRideData(1, rides, count, MAX_RIDES));
 }
 
+TEST_CASE("fetchRideData: lands and top-level rides can coexist") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks/9/queue_times.json", R"({
+      "lands": [{"name":"Main Street","rides":[
+        {"id":1,"name":"Railroad","wait_time":5,"is_open":true}]}],
+      "rides": [{"id":2,"name":"Parade","wait_time":15,"is_open":true}]
+    })");
+
+    QueueApi api;
+    RideInfo rides[MAX_RIDES]; int count = 0;
+    REQUIRE(api.fetchRideData(9, rides, count, MAX_RIDES));
+    REQUIRE(count == 2);
+    CHECK(rides[0].land == "Main Street");
+    CHECK(rides[1].land == "");           // top-level rides have no land
+}
+
+TEST_CASE("fetchRideData: non-ASCII names are transliterated for the LCD font") {
+    MockHTTP::clear();
+    // "Crème Brûlée™" ride in land "Fantasía" with smart quotes
+    // (Adjacent literals split after hex escapes: "\xADa" would otherwise
+    //  parse as the single escape 0xADA — MSVC C2022.)
+    MockHTTP::set("https://queue-times.com/parks/9/queue_times.json",
+      "{\"lands\":[{\"name\":\"Fantas\xC3\xAD" "a\",\"rides\":["
+      "{\"id\":1,\"name\":\"Cr\xC3\xA8me Br\xC3\xBBl\xC3\xA9" "e\xE2\x84\xA2\","
+      "\"wait_time\":10,\"is_open\":true}]}]}");
+
+    QueueApi api;
+    RideInfo rides[MAX_RIDES]; int count = 0;
+    REQUIRE(api.fetchRideData(9, rides, count, MAX_RIDES));
+    REQUIRE(count == 1);
+    CHECK(rides[0].name == "Creme Brulee");   // accents folded, (TM) dropped
+    CHECK(rides[0].land == "Fantasia");
+}
+
+TEST_CASE("fetchRideData: missing optional fields fall back to defaults") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks/9/queue_times.json",
+      R"({"lands":[{"rides":[{"id":7,"name":"Mystery"}]}]})");
+
+    QueueApi api;
+    RideInfo rides[MAX_RIDES]; int count = 0;
+    REQUIRE(api.fetchRideData(9, rides, count, MAX_RIDES));
+    REQUIRE(count == 1);
+    CHECK(rides[0].waitTime == -1);   // no wait_time
+    CHECK(rides[0].isOpen   == false); // no is_open
+    CHECK(rides[0].land     == "");    // land object had no name
+}
+
 // ── fetchAvailableParks ───────────────────────────────────────────────────────
 
 TEST_CASE("fetchAvailableParks: parses all parks and groups") {

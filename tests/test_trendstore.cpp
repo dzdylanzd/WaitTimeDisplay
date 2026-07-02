@@ -54,6 +54,21 @@ TEST_CASE("TrendStore: clear() forgets everything") {
     CHECK(ts.updateAndGetDelta(7, 10) == 0);   // first sighting again
 }
 
+TEST_CASE("TrendStore: unchanged wait reports flat") {
+    TrendStore ts;
+    ts.updateAndGetDelta(5, 30);
+    CHECK(ts.updateAndGetDelta(5, 30) == 0);
+    CHECK(ts.updateAndGetDelta(5, 30) == 0);
+}
+
+TEST_CASE("TrendStore: negative delta exactly at threshold reports") {
+    TrendStore ts;
+    ts.updateAndGetDelta(5, 30);
+    CHECK(ts.updateAndGetDelta(5, 25) == -5);   // -5 == -threshold
+    ts.updateAndGetDelta(5, 25);
+    CHECK(ts.updateAndGetDelta(5, 21) == 0);    // -4 is noise
+}
+
 TEST_CASE("TrendStore: over-capacity evicts oldest slots round-robin") {
     TrendStore ts;
     // Fill capacity (250) with ids 0..249

@@ -18,7 +18,7 @@ All scripts are at the **repo root** — double-click or run from any terminal:
 |---|---|
 | `build_sim.bat` | Build the desktop simulator (first run configures CMake) |
 | `run_sim.bat` | Launch the simulator window |
-| `test.bat` | Build and run all 59 unit tests |
+| `test.bat` | Build and run all 75 unit tests |
 | `clean_all.bat` | Delete `sim/build/` and `tests/build/` |
 
 > Simulator config UI: **http://localhost:8080**  
@@ -214,28 +214,29 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no SDL. HTTP responses are preset via `tests/HTTPClient.h` (MockHTTP map).
 
-### What is tested (59 test cases, 207 assertions)
+### What is tested (75 test cases, 266 assertions)
 
 **`test_configmanager.cpp`** — ConfigManager  
-- `parseEnabledParks`: valid JSON / empty / malformed / invalid IDs  
-- `isRideEnabled`: no filter / park missing / ride in filter / ride not in filter / cache invalidation  
+- `parseEnabledParks`: valid JSON / empty / malformed / non-array / invalid IDs  
+- `isRideEnabled`: no filter / park missing / in filter / not in filter / malformed JSON / cache invalidation  
 - `saveEnabledParks` round-trip / `hasEnabledParks` / `saveTimings`  
-- `saveDisplaySettings`, `saveRideOptions` round-trips  
-- `isRideFavorite`: empty / listed / missing park / cache invalidation  
+- `saveDisplaySettings` (incl. `ledEnabled`), `saveRideOptions` round-trips  
+- `isRideFavorite`: empty / listed / missing park / malformed JSON / cache invalidation  
+- `load()`: every saved setting survives a Preferences reload  
 - `factoryReset`: everything (incl. new settings) back to defaults, survives reload  
 
 **`test_queueapi_json.cpp`** — QueueApi  
-- `fetchRideData`: valid parse / land names / HTTP error / parkId ≤ 0 / MAX_RIDES limit / malformed JSON  
+- `fetchRideData`: valid parse / land names / lands + top-level rides mixed / non-ASCII transliteration / missing-field defaults / HTTP error / parkId ≤ 0 / MAX_RIDES limit / malformed JSON  
 - `fetchAvailableParks`: valid / HTTP error  
 - `getParkTimezone`: correct TZ / unknown park / cache hit  
 
-**`test_quiethours.cpp`** — `inQuietWindow`: same-day window, overnight wrap, empty window, boundaries  
+**`test_quiethours.cpp`** — `inQuietWindow`: same-day window, overnight wrap, empty window, one-minute windows, boundaries  
 
-**`test_trendstore.cpp`** — TrendStore: first sighting, threshold, sub-threshold drift, closed rides, park interleaving, capacity eviction  
+**`test_trendstore.cpp`** — TrendStore: first sighting, ± threshold boundaries, sub-threshold drift, unchanged wait, closed rides, park interleaving, capacity eviction  
 
-**`test_ridefilter.cpp`** — `applyDisplayOptions`: skip-closed, min-wait, revert-if-empty, wait-desc sort (stable, closed last), favorites-first, combinations  
+**`test_ridefilter.cpp`** — `applyDisplayOptions`: skip-closed, min-wait (boundary inclusive), revert-if-empty, empty/single lists, closed favorite dropped, wait-desc sort (stable, closed last), favorites-first, combinations  
 
-**`test_button.cpp`** — Button state machine: debounce, short press, long press (fires once while held), 10 s HoldWarning, HoldCancel on release, 20 s HoldReset (release swallowed), skip-past-20 s polling, back-to-back presses  
+**`test_button.cpp`** — Button state machine: debounce (press and release bounces), short press, long press (fires once while held), 10 s HoldWarning, HoldCancel on release, 20 s HoldReset (release swallowed), skip-past-20 s polling, back-to-back presses  
 
 ### Sub-scripts in `tests/`
 

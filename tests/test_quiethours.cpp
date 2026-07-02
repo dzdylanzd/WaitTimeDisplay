@@ -33,3 +33,13 @@ TEST_CASE("inQuietWindow: one-minute window") {
     CHECK(inQuietWindow(10 * 60, 10 * 60, 10 * 60 + 1));
     CHECK_FALSE(inQuietWindow(10 * 60 + 1, 10 * 60, 10 * 60 + 1));
 }
+
+TEST_CASE("inQuietWindow: almost-all-day wrap leaves only a one-minute gap") {
+    // 10:01 → 10:00 wraps midnight; only 10:00 itself is outside
+    const int start = 10 * 60 + 1, end = 10 * 60;
+    CHECK_FALSE(inQuietWindow(10 * 60, start, end));
+    CHECK(inQuietWindow(10 * 60 + 1, start, end));
+    CHECK(inQuietWindow(0, start, end));
+    CHECK(inQuietWindow(23 * 60 + 59, start, end));
+    CHECK(inQuietWindow(9 * 60 + 59, start, end));
+}
