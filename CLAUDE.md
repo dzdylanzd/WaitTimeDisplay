@@ -127,7 +127,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### LCD driver notes
 
-- **Landscape mode**: MADCTL byte `0x60` (MX=1, MV=1). X goes 0–319, Y goes 0–171.
+- **Landscape mode**: MADCTL byte `0x68` (MX=1, MV=1, BGR=1). X goes 0–319, Y goes 0–171. `LCD_SetRotation(true)` switches to `0xA8` (MY|MV|BGR) for the user's 180° flip option — the 34-row offset is symmetric so windowing is unchanged; `AppStateManager::applyScreenFlip()` applies it at boot and on config save (with a full `lv_obj_invalidate`).
 - **Y offset**: `LCD_SetWindow` adds a fixed offset of 34 to all Y addresses (ST7789 controller has 240 rows, panel is 172 px).
 - **Colour byte order**: `LV_COLOR_16_SWAP 1` in `lv_conf.h` — LVGL swaps bytes before SPI DMA flush.
 - **LVGL tick**: driven by `esp_timer` calling `lv_tick_inc(5)` every 5 ms from `Lvgl_Init()`. In the sim, called manually in the SDL loop.
@@ -143,7 +143,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### NVS namespaces
 - `"queuewatch"` — `ConfigManager` (parks, ride filters/favorites, timings, display + ride-display options) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
-- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en` (brightness + quiet hours + status-LED on/off), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
+- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr` (brightness + quiet hours + status-LED on/off + 180° screen flip), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
 
 ### Data flow
 1. `QueueApi::fetchRideData()` populates a fixed `RideInfo[MAX_RIDES]` array (no heap allocation for ride data). Each ride carries its `land` name (empty for lands-less parks like Tokyo).

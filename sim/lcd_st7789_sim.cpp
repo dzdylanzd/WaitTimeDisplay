@@ -7,3 +7,4 @@ void LCD_Init()                                               {}
 void LCD_SetWindow(uint16_t, uint16_t, uint16_t, uint16_t)   {}
 void LCD_WritePixels(uint16_t*, uint32_t)                     {}
 void LCD_SetBacklight(uint8_t)                                {}
+void LCD_SetRotation(bool)                                    {}

@@ -18,6 +18,7 @@ AppStateManager::AppStateManager(WiFiManager& wifi, QueueApi& api,
 void AppStateManager::begin() {
   reloadRuntimeConfig();
   applyBrightness(true);   // LCD_Init leaves the backlight at 100%
+  applyScreenFlip();       // ...and the panel unflipped
   if (!_wifi.isConfigured()) transitionTo(SystemState::WIFI_CONFIG_PORTAL);
   else                       transitionTo(SystemState::WIFI_CONNECTING);
 }
@@ -38,6 +39,7 @@ void AppStateManager::update() {
 
   if (_webServer.isConfigUpdated()) {
     _webServer.clearConfigFlag();
+    applyScreenFlip();       // before the repaint restartCycle triggers
     restartCycle();
     applyBrightness(true);   // pick up a changed brightness immediately
     transitionTo(SystemState::WAIT_TIME_CYCLE);
@@ -560,6 +562,17 @@ void AppStateManager::applyBrightness(bool force) {
   _lastAppliedBrightness = target;
   LCD_SetBacklight(target);
   updateLed();   // the LED brightness tracks the backlight
+}
+
+// Rotate the panel 180° when the user mounted the device upside-down. The
+// MADCTL change only affects how NEW pixels are addressed, so the whole
+// screen is invalidated to repaint everything into the new orientation.
+void AppStateManager::applyScreenFlip() {
+  bool flip = _cfg.getConfig().flipScreen;
+  if (flip == _lastAppliedFlip) return;
+  _lastAppliedFlip = flip;
+  LCD_SetRotation(flip);
+  lv_obj_invalidate(lv_scr_act());
 }
 
 // Reflect the currently shown ride (or closed-park state) on the RGB LED.

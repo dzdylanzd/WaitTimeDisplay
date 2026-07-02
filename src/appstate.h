@@ -63,6 +63,7 @@ private:
   void rememberRideNames();
   void repaintAfterResetWarning();
   void applyBrightness(bool force = false);
+  void applyScreenFlip();
   uint8_t effectiveBrightness() const;
   void updateLed();
 
@@ -104,6 +105,7 @@ private:
   uint8_t       _lastAppliedBrightness = 255;   // 255 = "not applied yet"
   unsigned long _lastBrightnessCheck   = 0;
   bool          _resetWarningActive    = false; // BOOT held ≥10 s, screen frozen
+  bool          _lastAppliedFlip       = false; // LCD_Init leaves it unflipped
 
   int           _wifiFailCount     = 0;
   unsigned long _lastWiFiTry       = 0;

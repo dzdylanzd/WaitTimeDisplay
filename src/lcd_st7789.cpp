@@ -85,6 +85,19 @@ void LCD_WritePixels(uint16_t* color, uint32_t numPixels) {
 }
 
 // ---------------------------------------------------------------------------
+// Rotation — both values are landscape; flip180 turns the image upside-down
+// for mounting the device the other way up.
+//   normal : MADCTL 0x68 (MX=1, MV=1, BGR=1)
+//   flipped: MADCTL 0xA8 (MY=1, MV=1, BGR=1)
+// The 34-row offset is symmetric ((240-172)/2), so LCD_SetWindow works
+// unchanged in either orientation.
+// ---------------------------------------------------------------------------
+void LCD_SetRotation(bool flip180) {
+    const uint8_t madctl = flip180 ? 0xA8 : 0x68;
+    _write_cmd_data(0x36, &madctl, 1);
+}
+
+// ---------------------------------------------------------------------------
 // Backlight
 // ---------------------------------------------------------------------------
 void LCD_SetBacklight(uint8_t percent) {
@@ -118,11 +131,11 @@ void LCD_Init(void) {
     _write_cmd(0x11);   // Sleep out
     delay(120);
 
-    // MADCTL = 0x68: MX=1, MV=1, BGR=1 → landscape (320 wide × 172 tall)
-    //   Bit 7 MY=0, Bit 6 MX=1, Bit 5 MV=1, Bit 4 ML=0, Bit 3 BGR=1
+    // MADCTL: landscape (320 wide × 172 tall), see LCD_SetRotation.
     //   This panel is wired BGR (matches the Waveshare reference driver);
     //   without the BGR bit red and blue are swapped (gold rendered cyan).
-    _write_cmd_data(0x36, (const uint8_t[]){0x68}, 1);
+    //   AppStateManager re-applies the user's flip setting after config load.
+    LCD_SetRotation(false);
 
     // COLMOD: 16-bit colour (RGB565)
     _write_cmd_data(0x3A, (const uint8_t[]){0x05}, 1);

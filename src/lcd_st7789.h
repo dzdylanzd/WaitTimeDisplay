@@ -30,3 +30,4 @@ void LCD_Init(void);
 void LCD_SetWindow(uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1);
 void LCD_WritePixels(uint16_t* color, uint32_t numPixels);
 void LCD_SetBacklight(uint8_t percent);   // 0–100
+void LCD_SetRotation(bool flip180);       // landscape, optionally upside-down

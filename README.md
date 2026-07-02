@@ -25,6 +25,7 @@ cycles through live ride wait times for the parks you care about, powered by
 - **Trend arrows** — a red ▲ or green ▼ with the change in minutes when a ride's wait moved since the last refresh
 - **Favorites & sorting** — star rides in the web UI to show them first, sort by longest wait, skip closed rides, or hide short waits
 - **Brightness & quiet hours** — dim or switch off the screen on a nightly schedule (follows the displayed park's clock)
+- **Flippable screen** — rotate the display 180° in the web UI when the device is mounted upside-down
 - **Status LED** — the onboard RGB LED glows in the current wait colour (can be turned off in the web UI)
 - **BOOT-button controls** — tap for next ride, hold for next park, hold 20 s for an on-device factory reset (with an "are you sure?" warning at 10 s)
 - **Local park time** — automatic IANA → POSIX timezone mapping + NTP sync per park
@@ -75,8 +76,8 @@ to reach the config UI, where you can:
 - hide individual rides per park and star your favorites,
 - choose the ride order (park order or longest wait first, favorites first),
   skip closed rides, or hide rides waiting under N minutes,
-- set the screen brightness, quiet hours (nightly dim/off schedule), and
-  turn the status LED on or off,
+- set the screen brightness, quiet hours (nightly dim/off schedule), flip
+  the screen 180° for upside-down mounting, and turn the status LED on or off,
 - adjust the API refresh, ride rotation, and closed-park display intervals,
 - export/import the whole configuration as a JSON file,
 - factory-reset the device (wipes WiFi credentials and all settings, then

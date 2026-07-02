@@ -209,6 +209,8 @@ R"rawliteral(
         <input type="range" id="brt" min="5" max="100" value="100" oninput="$('brtVal').textContent=this.value"></div>
       <div class="field"><label>Status LED (wait colour)</label>
         <label class="switch"><input type="checkbox" id="led_en" checked><span class="slider"></span></label></div>
+      <div class="field"><label>Flip screen 180&deg;</label>
+        <label class="switch"><input type="checkbox" id="flip_scr"><span class="slider"></span></label></div>
       <div class="field"><label>Quiet hours</label>
         <label class="switch"><input type="checkbox" id="qt_en"><span class="slider"></span></label></div>
       <div class="field"><label>Quiet start</label><input type="time" id="qt_sta" value="22:00"></div>
@@ -277,6 +279,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(cfg.quietEnd)$('qt_end').value=cfg.quietEnd;
     if(typeof cfg.quietBrightness==='number'){$('qt_brt').value=cfg.quietBrightness;$('qtBrtVal').textContent=cfg.quietBrightness;}
     if(typeof cfg.ledEnabled==='boolean')$('led_en').checked=cfg.ledEnabled;
+    if(typeof cfg.flipScreen==='boolean')$('flip_scr').checked=cfg.flipScreen;
     if(cfg.rideOptions){$('sortMode').value=cfg.rideOptions.sortMode||0;$('favFirst').checked=!!cfg.rideOptions.favoritesFirst;$('skipClosed').checked=!!cfg.rideOptions.skipClosed;$('minWait').value=cfg.rideOptions.minWait||0;}
     if(cfg.rideFavorites)favCache=cfg.rideFavorites;
     if(cfg.enabledParks&&cfg.enabledParks.length){
@@ -381,7 +384,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
   const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
-    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
@@ -423,6 +426,7 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
     if(cfg.quietEnd)body.quietEnd=cfg.quietEnd;
     if(typeof cfg.quietBrightness==='number')body.quietBrightness=cfg.quietBrightness;}
   if(typeof cfg.ledEnabled==='boolean')body.ledEnabled=cfg.ledEnabled;
+  if(typeof cfg.flipScreen==='boolean')body.flipScreen=cfg.flipScreen;
   if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r=await res.json();
@@ -606,6 +610,7 @@ void ConfigWebServer::handleApiConfig() {
   doc["quietEnd"]        = minutesToHHMM(cfg.quietEndMin);
   doc["quietBrightness"] = cfg.quietBrightness;
   doc["ledEnabled"]      = cfg.ledEnabled;
+  doc["flipScreen"]      = cfg.flipScreen;
 
   JsonObject ro = doc.createNestedObject("rideOptions");
   ro["sortMode"]       = cfg.sortMode;
@@ -705,8 +710,10 @@ void ConfigWebServer::handleSaveConfig() {
     if (qtBrt > 100) qtBrt = 100;
     bool ledEn = doc.containsKey("ledEnabled") ? (bool)doc["ledEnabled"]
                                                : cur.ledEnabled;
+    bool flip  = doc.containsKey("flipScreen") ? (bool)doc["flipScreen"]
+                                               : cur.flipScreen;
     _cfgMgr.saveDisplaySettings((uint8_t)brt, qtEn, (uint16_t)qtSta,
-                                (uint16_t)qtEnd, (uint8_t)qtBrt, ledEn);
+                                (uint16_t)qtEnd, (uint8_t)qtBrt, ledEn, flip);
 
     JsonObject ro = doc["rideOptions"].as<JsonObject>();
     if (!ro.isNull()) {
