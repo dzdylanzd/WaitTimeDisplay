@@ -480,7 +480,7 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
       if (brt < 30) brt = 30;
       LCD_SetBacklight(brt);
       _lastAppliedBrightness = brt;
-      _led.showLevel(WaitLevel::Red, brt);
+      if (_cfg.getConfig().ledEnabled) _led.showLevel(WaitLevel::Red, brt);
       _display.showFactoryResetWarning();
       return;
     }
@@ -565,7 +565,8 @@ void AppStateManager::applyBrightness(bool force) {
 // Reflect the currently shown ride (or closed-park state) on the RGB LED.
 // Outside the wait-time cycle the LED stays dark (see transitionTo).
 void AppStateManager::updateLed() {
-  if (_state != SystemState::WAIT_TIME_CYCLE || _rideCount <= 0) {
+  if (!_cfg.getConfig().ledEnabled ||
+      _state != SystemState::WAIT_TIME_CYCLE || _rideCount <= 0) {
     _led.off();
     return;
   }

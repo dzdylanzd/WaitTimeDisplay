@@ -17,6 +17,7 @@ void ConfigManager::load() {
   _config.quietStartMin     = (uint16_t)_prefs.getInt("qt_sta", 22 * 60);
   _config.quietEndMin       = (uint16_t)_prefs.getInt("qt_end", 7 * 60);
   _config.quietBrightness   = (uint8_t)_prefs.getInt("qt_brt", 0);
+  _config.ledEnabled        = _prefs.getBool("led_en", true);
 
   _config.sortMode          = (uint8_t)_prefs.getInt("sort_mode", SORT_MODE_API_ORDER);
   _config.favoritesFirst    = _prefs.getBool("fav_first", true);
@@ -67,19 +68,21 @@ void ConfigManager::saveRideFilters(const String& filtersJson) {
 
 void ConfigManager::saveDisplaySettings(uint8_t brightness, bool quietEnabled,
                                          uint16_t quietStartMin, uint16_t quietEndMin,
-                                         uint8_t quietBrightness) {
+                                         uint8_t quietBrightness, bool ledEnabled) {
   _prefs.begin(NVS_NAMESPACE, false);
   _prefs.putInt("brt",     brightness);
   _prefs.putBool("qt_en",  quietEnabled);
   _prefs.putInt("qt_sta",  quietStartMin);
   _prefs.putInt("qt_end",  quietEndMin);
   _prefs.putInt("qt_brt",  quietBrightness);
+  _prefs.putBool("led_en", ledEnabled);
   _prefs.end();
   _config.brightness        = brightness;
   _config.quietHoursEnabled = quietEnabled;
   _config.quietStartMin     = quietStartMin;
   _config.quietEndMin       = quietEndMin;
   _config.quietBrightness   = quietBrightness;
+  _config.ledEnabled        = ledEnabled;
 }
 
 void ConfigManager::saveRideOptions(uint8_t sortMode, bool favoritesFirst,

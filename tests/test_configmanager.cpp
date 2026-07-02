@@ -125,13 +125,14 @@ TEST_CASE("saveTimings: values reflected in getConfig immediately") {
 
 TEST_CASE("saveDisplaySettings: values reflected in getConfig") {
     ConfigManager mgr;
-    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60 + 30, 10);
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60 + 30, 10, false);
     const auto& cfg = mgr.getConfig();
     CHECK(cfg.brightness        == 40);
     CHECK(cfg.quietHoursEnabled == true);
     CHECK(cfg.quietStartMin     == 21 * 60);
     CHECK(cfg.quietEndMin       == 6 * 60 + 30);
     CHECK(cfg.quietBrightness   == 10);
+    CHECK(cfg.ledEnabled        == false);
 }
 
 // ── saveRideOptions ───────────────────────────────────────────────────────────
@@ -179,7 +180,7 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     mgr.saveTimings(120000, 15000, 25000, 45000);
     mgr.saveEnabledParks(R"([{"id":1,"name":"Park"}])");
     mgr.saveRideFilters(R"({"1":[10,20]})");
-    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10);
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10, false);
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 15);
     mgr.saveRideFavorites(R"({"1":[10]})");
     REQUIRE(mgr.hasEnabledParks());
@@ -198,6 +199,7 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     CHECK(mgr.isRideEnabled(1, 99));  // filter gone — everything enabled again
     CHECK(cfg.brightness        == 100);
     CHECK(cfg.quietHoursEnabled == false);
+    CHECK(cfg.ledEnabled        == true);
     CHECK(cfg.sortMode          == SORT_MODE_API_ORDER);
     CHECK(cfg.favoritesFirst    == true);
     CHECK(cfg.skipClosedRides   == false);

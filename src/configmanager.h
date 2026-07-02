@@ -26,12 +26,13 @@ struct RuntimeConfig {
   std::vector<String> enabledParkNames;
   String              rideFiltersJson;
 
-  // ---- Display: backlight + quiet hours ----
+  // ---- Display: backlight + quiet hours + status LED ----
   uint8_t  brightness        = 100;     // 5–100 %
   bool     quietHoursEnabled = false;
   uint16_t quietStartMin     = 22 * 60; // minutes since midnight, park-local
   uint16_t quietEndMin       = 7 * 60;
   uint8_t  quietBrightness   = 0;       // 0 = backlight off during quiet hours
+  bool     ledEnabled        = true;    // onboard RGB wait-colour LED
 
   // ---- Ride display options (global) ----
   uint8_t sortMode        = SORT_MODE_API_ORDER;
@@ -57,7 +58,7 @@ public:
 
   void saveDisplaySettings(uint8_t brightness, bool quietEnabled,
                            uint16_t quietStartMin, uint16_t quietEndMin,
-                           uint8_t quietBrightness);
+                           uint8_t quietBrightness, bool ledEnabled);
   void saveRideOptions(uint8_t sortMode, bool favoritesFirst,
                        bool skipClosedRides, uint8_t minWaitMinutes);
   void saveRideFavorites(const String& favoritesJson);
