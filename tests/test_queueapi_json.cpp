@@ -41,6 +41,16 @@ static const char* PARKS_JSON = R"([
   }
 ])";
 
+// Tokyo Disneyland/DisneySea format: empty "lands", rides at top level
+static const char* TOKYO_RIDE_JSON = R"({
+  "lands": [],
+  "rides": [
+    {"id": 301, "name": "Journey to the Center of the Earth", "wait_time": 60, "is_open": true},
+    {"id": 302, "name": "Toy Story Mania!",                   "wait_time": 90, "is_open": true},
+    {"id": 303, "name": "Aquatopia",                          "wait_time": 0,  "is_open": false}
+  ]
+})";
+
 // ── fetchRideData ─────────────────────────────────────────────────────────────
 
 TEST_CASE("fetchRideData: parses rides correctly") {
@@ -69,6 +79,24 @@ TEST_CASE("fetchRideData: parses rides correctly") {
     CHECK(rides[3].id       == 201);
     CHECK(rides[3].name     == "Space Mountain");
     CHECK(rides[3].waitTime == 45);
+}
+
+TEST_CASE("fetchRideData: parses top-level rides array (Tokyo format)") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks/274/queue_times.json", TOKYO_RIDE_JSON);
+
+    QueueApi api;
+    RideInfo rides[MAX_RIDES];
+    int count = 0;
+    bool ok = api.fetchRideData(274, rides, count, MAX_RIDES);
+
+    CHECK(ok);
+    REQUIRE(count == 3);
+    CHECK(rides[0].id       == 301);
+    CHECK(rides[0].name     == "Journey to the Center of the Earth");
+    CHECK(rides[0].waitTime == 60);
+    CHECK(rides[1].isOpen   == true);
+    CHECK(rides[2].isOpen   == false);
 }
 
 TEST_CASE("fetchRideData: returns false on HTTP error") {

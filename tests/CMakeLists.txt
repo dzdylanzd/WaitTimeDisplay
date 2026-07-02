@@ -45,6 +45,36 @@ else()
     target_compile_options(queuewatch_tests PRIVATE -Wall -Wextra -Wno-unused-parameter)
 endif()
 
+# ── Live integration tests (real HTTPS to queue-times.com) ──────────────
+# Separate executable: uses the sim's WinHTTP HTTPClient instead of the
+# mock, so it exercises the parser against every real park. Needs internet.
+add_executable(queuewatch_live_tests
+    ${TESTS_DIR}/test_live_api.cpp
+    ${SRC_DIR}/queueapi.cpp
+)
+
+# tests/live/ first so its HTTPClient.h (→ sim WinHTTP) and WiFi.h shadow
+# the offline mocks in tests/. doctest.h still comes from tests/.
+target_include_directories(queuewatch_live_tests PRIVATE
+    ${TESTS_DIR}/live
+    ${TESTS_DIR}
+    ${SIM_DIR}
+    ${SRC_DIR}
+    ${JSON_DIR}
+    "${JSON_DIR}/src"
+)
+
+target_compile_definitions(queuewatch_live_tests PRIVATE
+    _CRT_SECURE_NO_WARNINGS
+    ARDUINOJSON_ENABLE_ARDUINO_STRING=1
+)
+
+target_link_libraries(queuewatch_live_tests PRIVATE winhttp)
+
+if(MSVC)
+    target_compile_options(queuewatch_live_tests PRIVATE /W3 /wd4100 /wd4267)
+endif()
+
 add_custom_target(run_tests
     COMMAND queuewatch_tests
     DEPENDS queuewatch_tests

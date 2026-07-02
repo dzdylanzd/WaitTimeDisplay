@@ -20,5 +20,14 @@ echo Building tests...
 if errorlevel 1 ( echo Build failed & exit /b 1 )
 
 echo.
-echo Running tests...
+echo Running unit tests...
 "%BUILD_DIR%\queuewatch_tests.exe" --reporters=console --success
+if errorlevel 1 ( echo Unit tests FAILED & exit /b 1 )
+
+echo.
+echo Running live API tests (fetches every park from queue-times.com - needs internet, takes a few minutes)...
+"%BUILD_DIR%\queuewatch_live_tests.exe"
+if errorlevel 1 ( echo Live API tests FAILED & exit /b 1 )
+
+echo.
+echo All tests passed.

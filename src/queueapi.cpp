@@ -71,7 +71,8 @@ static String sanitizeToAscii(const char* src) {
   return out;
 }
 
-bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc) {
+bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc,
+                           JsonDocument* filter) {
   // On device, WiFi must be connected before making any HTTP call.
   // In the sim (SIMULATION=1) we skip this check — internet is always available.
 #ifndef SIMULATION
@@ -107,7 +108,9 @@ bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc) {
 
       FEED_WDT();
       doc.clear();
-      DeserializationError error = deserializeJson(doc, payload);
+      DeserializationError error = filter
+        ? deserializeJson(doc, payload, DeserializationOption::Filter(*filter))
+        : deserializeJson(doc, payload);
       if (error) {
         Serial.printf("JSON parse error: %s\n", error.c_str());
         return false;
@@ -152,16 +155,34 @@ String QueueApi::getParkTimezone(int parkId) {
   return "UTC";
 }
 
+void QueueApi::appendRide(JsonObject ride, RideInfo rides[], int& rideCount) {
+  rides[rideCount].id       = ride["id"] | -1;
+  rides[rideCount].name     = sanitizeToAscii(ride["name"] | "Unknown");
+  rides[rideCount].waitTime = ride["wait_time"] | -1;
+  rides[rideCount].isOpen   = ride["is_open"] | false;
+  rideCount++;
+}
+
 bool QueueApi::fetchRideData(int parkId,
                               RideInfo rides[], int& rideCount,
                               int maxRides) {
   if (WiFi.status() != WL_CONNECTED) return false;
   if (parkId <= 0) return false;
 
-  DynamicJsonDocument doc(16384);
+  // Only parse the fields we actually use. Without a filter, large parks
+  // (e.g. Canada's Wonderland) overflow the document and fail with NoMemory.
+  StaticJsonDocument<512> filter;
+  JsonObject fLand = filter["lands"][0]["rides"][0].to<JsonObject>();
+  fLand["id"] = true; fLand["name"] = true;
+  fLand["wait_time"] = true; fLand["is_open"] = true;
+  JsonObject fTop = filter["rides"][0].to<JsonObject>();
+  fTop["id"] = true; fTop["name"] = true;
+  fTop["wait_time"] = true; fTop["is_open"] = true;
+
+  DynamicJsonDocument doc(32768);
   String url = String("https://queue-times.com/parks/") +
                parkId + "/queue_times.json";
-  if (!httpGetJson(url, doc)) return false;
+  if (!httpGetJson(url, doc, &filter)) return false;
 
   rideCount = 0;
   JsonArray lands = doc["lands"].as<JsonArray>();
@@ -170,12 +191,16 @@ bool QueueApi::fetchRideData(int parkId,
     JsonArray ridesArray = land["rides"].as<JsonArray>();
     for (JsonObject ride : ridesArray) {
       if (rideCount >= maxRides) break;
-      rides[rideCount].id       = ride["id"] | -1;
-      rides[rideCount].name     = sanitizeToAscii(ride["name"] | "Unknown");
-      rides[rideCount].waitTime = ride["wait_time"] | -1;
-      rides[rideCount].isOpen   = ride["is_open"] | false;
-      rideCount++;
+      appendRide(ride, rides, rideCount);
     }
+  }
+
+  // Some parks (e.g. Tokyo Disneyland/DisneySea) return no lands and put
+  // all rides in a top-level "rides" array instead.
+  JsonArray topRides = doc["rides"].as<JsonArray>();
+  for (JsonObject ride : topRides) {
+    if (rideCount >= maxRides) break;
+    appendRide(ride, rides, rideCount);
   }
 
   return rideCount > 0;

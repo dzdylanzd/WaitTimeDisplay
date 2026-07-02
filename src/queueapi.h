@@ -33,7 +33,9 @@ private:
   TZCache _tzCache[TZ_CACHE_SIZE];
   int     _tzCacheCount = 0;
 
-  bool httpGetJson(const String& url, DynamicJsonDocument& doc);
+  bool httpGetJson(const String& url, DynamicJsonDocument& doc,
+                   JsonDocument* filter = nullptr);
+  static void appendRide(JsonObject ride, RideInfo rides[], int& rideCount);
 };
 
 #endif // QUEUEAPI_H

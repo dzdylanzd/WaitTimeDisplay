@@ -124,7 +124,14 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
   if (_rideCount <= 0) {
     if (now - _lastApiFetch >= DATA_RETRY_INTERVAL) {
       _lastApiFetch = now;
-      loadParkData();
+      // A park that keeps failing (fetch error or zero usable rides) must not
+      // stall the whole cycle: after two failed retries move on to the next
+      // configured park instead of hammering the same one forever.
+      if (_parkLoadFailures >= 2 && cfg.enabledParkIds.size() > 1) {
+        advanceToNextPark();
+      } else {
+        loadParkData();
+      }
     }
     return;
   }
@@ -305,14 +312,17 @@ void AppStateManager::loadParkData() {
     _display.setDataFreshness(0);
     _showingClosedPark = false;
     if (_rideCount > 0) {
+      _parkLoadFailures = 0;
       _display.drawBackground();
       _display.drawParkName(_currentParkName, true);
       _currentRideIndex = 0;
       _display.displayRide(_rides[_currentRideIndex], _currentRideIndex);
     } else {
+      _parkLoadFailures++;
       _display.showNoData(NoDataReason::NO_RIDES);
     }
   } else {
+    _parkLoadFailures++;
     _display.showNoData(NoDataReason::FETCH_FAILED);
     _rideCount = 0;
   }
@@ -325,6 +335,7 @@ void AppStateManager::advanceToNextPark() {
     _display.showNoData(NoDataReason::NO_PARKS);
     return;
   }
+  _parkLoadFailures = 0;
   _currentParkIndex = (_currentParkIndex + 1) % (int)cfg.enabledParkIds.size();
   _currentParkId    = cfg.enabledParkIds[_currentParkIndex];
   _currentParkName  = cfg.enabledParkNames[_currentParkIndex];
@@ -345,6 +356,7 @@ void AppStateManager::reloadRuntimeConfig() {
 void AppStateManager::restartCycle() {
   reloadRuntimeConfig();
   _wifiFailCount = 0;
+  _parkLoadFailures = 0;
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.enabledParkIds.size() == 0) {
     _display.showNoData(NoDataReason::NO_PARKS);

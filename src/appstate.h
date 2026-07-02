@@ -81,6 +81,7 @@ private:
   unsigned long _cfgClosedParkDisplayTime = DEFAULT_CLOSED_PARK_DISPLAY_TIME;
   unsigned long _cfgTimeUpdateInterval    = DEFAULT_TIME_UPDATE_INTERVAL;
 
+  int          _parkLoadFailures  = 0;
   bool         _startupScreenShown = false;
   bool         _showingClosedPark  = false;
   unsigned long _closedParkStart   = 0;
