@@ -7,8 +7,14 @@
 struct RideInfo {
   int    id = -1;
   String name;
+  String land;              // themed area name ("" when the park has no lands)
   int    waitTime = -1;
   bool   isOpen = false;
+
+  // Annotations added after fetch (AppStateManager), not parsed from the API:
+  int8_t  trend      = 0;   // -1 falling / 0 flat / +1 rising vs last refresh
+  int16_t trendDelta = 0;   // signed minutes behind the arrow
+  bool    favorite   = false;
 };
 
 class QueueApi {
@@ -35,7 +41,8 @@ private:
 
   bool httpGetJson(const String& url, DynamicJsonDocument& doc,
                    JsonDocument* filter = nullptr);
-  static void appendRide(JsonObject ride, RideInfo rides[], int& rideCount);
+  static void appendRide(JsonObject ride, const char* landName,
+                         RideInfo rides[], int& rideCount);
 };
 
 #endif // QUEUEAPI_H

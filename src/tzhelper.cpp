@@ -109,3 +109,10 @@ String getLocalTimeString() {
   _lastValidTime = String(buf);
   return _lastValidTime;
 }
+
+bool getLocalMinutesOfDay(int& outMinutes) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo)) return false;
+  outMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+  return true;
+}

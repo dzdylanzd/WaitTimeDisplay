@@ -34,12 +34,14 @@ public:
   void drawBackground();
   void drawParkName(const String& parkName, bool force);
   void setRideCount(int count);
-  void drawProgressBar(int currentIdx, int totalCount);
+  void drawProgressBar(int currentIdx, int totalCount, bool favorite = false);
   void displayRide(const RideInfo& ride, int rideIdx = 0);
   void updateRideIfChanged(const RideInfo& ride, int rideIdx);
   void redrawWaitTime(const RideInfo& ride);
 
   void showNoData(NoDataReason reason = NoDataReason::FETCH_FAILED);
+  void showFactoryResetWarning();   // BOOT held 10 s — "keep holding to erase"
+  void showFactoryResetting();      // BOOT held 20 s — painted just before restart
   void showClosedPark(const String& parkName);
   void showCaptivePortalInfo(const char* apName, const char* apPass);
   void showStartupInfo(const String& ipAddress);
@@ -53,9 +55,12 @@ private:
   int    _rideCount    = 0;
   String _lastParkName;
   String _lastRideName;
+  String _lastLand;
   int    _lastWaitTime = -999;
   bool   _lastIsOpen   = false;
   int    _lastRideIdx  = -1;
+  int8_t _lastTrend    = 0;
+  bool   _lastFavorite = false;
 
   // ---- Main ride screen ----
   lv_obj_t* _scrMain       = nullptr;
@@ -64,6 +69,8 @@ private:
   lv_obj_t* _barProgress   = nullptr;
   lv_obj_t* _lblRideIdx    = nullptr;
   lv_obj_t* _lblRideName   = nullptr;
+  lv_obj_t* _lblLand       = nullptr;  // themed-land name (2nd ride-panel row)
+  lv_obj_t* _lblTrend      = nullptr;  // rising/falling arrow + delta minutes
   lv_obj_t* _objWaitPanel  = nullptr;  // full-width coloured background
   lv_obj_t* _objWaitBorder = nullptr;  // 2 px accent line at top of wait panel
   lv_obj_t* _lblWaitNum    = nullptr;  // big number / "CLOSED"
@@ -92,6 +99,7 @@ private:
   void _loadPortal();
   void _applyWaitWidgets(const RideInfo& ride);
   void _setRideName(const String& name);
+  void _setLand(const String& land);
 };
 
 #endif // DISPLAY_H

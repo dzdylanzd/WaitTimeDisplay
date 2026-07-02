@@ -12,6 +12,12 @@
 #define TFT_SCLK   7
 #define TFT_LIGHT 22
 
+// ----------- Other onboard peripherals -----------
+#define RGB_LED_PIN   8   // WS2812 (Waveshare ESP32-C6-LCD-1.47 onboard LED)
+#define BOOT_BTN_PIN  9   // BOOT button, active-low. Strapping pin — safe to
+                          // read with INPUT_PULLUP at runtime (matches its
+                          // boot-time default state).
+
 // ----------- Network -----------
 constexpr uint8_t  WIFI_RETRY_MAX      = 20;
 constexpr uint16_t WIFI_RETRY_DELAY_MS = 300;

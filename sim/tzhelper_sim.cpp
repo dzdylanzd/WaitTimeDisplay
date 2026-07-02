@@ -13,3 +13,10 @@ String getLocalTimeString() {
     strftime(buf, sizeof(buf), "%H:%M", tm_info);
     return String(buf);
 }
+
+bool getLocalMinutesOfDay(int& outMinutes) {
+    time_t t = time(nullptr);
+    const struct tm* tm_info = localtime(&t);
+    outMinutes = tm_info->tm_hour * 60 + tm_info->tm_min;
+    return true;
+}

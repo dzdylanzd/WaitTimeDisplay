@@ -83,7 +83,7 @@
 /* Disable unused built-in fonts to save flash */
 #define LV_FONT_MONTSERRAT_8  0
 #define LV_FONT_MONTSERRAT_10 0
-#define LV_FONT_MONTSERRAT_12 0
+#define LV_FONT_MONTSERRAT_12 1   /* land name + "NEXT:" hint on the ride panel */
 #define LV_FONT_MONTSERRAT_18 0
 #define LV_FONT_MONTSERRAT_22 0
 #define LV_FONT_MONTSERRAT_24 0

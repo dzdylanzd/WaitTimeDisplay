@@ -118,6 +118,24 @@ struct _SerialProxy {
 };
 inline _SerialProxy Serial;
 
+// ── GPIO / RGB LED stubs ──────────────────────────────────────────────────────
+// Only the constants src/ actually uses are defined. Deliberately NOT
+// defining INPUT/OUTPUT macros: `INPUT` is a winuser.h struct type and the
+// WebServer stub pulls in Windows headers in the same translation units.
+#ifndef HIGH
+  #define HIGH 1
+#endif
+#ifndef LOW
+  #define LOW 0
+#endif
+#ifndef INPUT_PULLUP
+  #define INPUT_PULLUP 0x05
+#endif
+inline void pinMode(uint8_t, uint8_t) {}
+inline int  digitalRead(uint8_t) { return HIGH; }   // active-low button: never pressed
+inline void digitalWrite(uint8_t, uint8_t) {}
+inline void neopixelWrite(uint8_t, uint8_t, uint8_t, uint8_t) {}
+
 // ── Misc Arduino globals ──────────────────────────────────────────────────────
 #ifndef min
   #define min(a,b) ((a)<(b)?(a):(b))

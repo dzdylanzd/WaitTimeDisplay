@@ -15,6 +15,8 @@
 #include "../src/tzhelper.h"
 #include "../src/configmanager.h"
 #include "../src/cfgserver.h"
+#include "../src/statusled.h"
+#include "../src/button.h"
 #include "../src/appstate.h"
 
 extern SDL_Window* sim_window;
@@ -25,7 +27,9 @@ static QueueApi         queueApi;
 static ConfigManager    configMgr;
 static ConfigWebServer  configWebServer(configMgr, queueApi);
 static DisplayController display;
-static AppStateManager  appState(wifiMgr, queueApi, configMgr, display, configWebServer);
+static StatusLed        statusLed;
+static AppStateManager  appState(wifiMgr, queueApi, configMgr, display, configWebServer,
+                                 statusLed);
 
 int main(int /*argc*/, char** /*argv*/) {
     setvbuf(stdout, nullptr, _IONBF, 0);   // unbuffered — logs usable when redirected
@@ -45,6 +49,8 @@ int main(int /*argc*/, char** /*argv*/) {
 
     puts("QueueWatch Simulator  |  Config: http://localhost:8080");
     puts("Keys: C = connect WiFi (portal save / bring network back)  |  D = drop WiFi  |  ESC = quit");
+    puts("      N = next ride (BOOT short press)  |  P = next park (BOOT long press)");
+    puts("      W = factory-reset warning (BOOT held 10s)  |  X = cancel the warning");
 
     bool running = true;
     while (running) {
@@ -60,6 +66,14 @@ int main(int /*argc*/, char** /*argv*/) {
         } else if (key == 'c') {
             puts("[sim] Network restored - device will reconnect");
             WiFi.simSetNetwork(true);
+        } else if (key == 'n') {
+            appState.onButtonEvent(ButtonEvent::Short);       // BOOT short press
+        } else if (key == 'p') {
+            appState.onButtonEvent(ButtonEvent::Long);        // BOOT long press
+        } else if (key == 'w') {
+            appState.onButtonEvent(ButtonEvent::HoldWarning); // BOOT held 10 s
+        } else if (key == 'x') {
+            appState.onButtonEvent(ButtonEvent::HoldCancel);  // released again
         }
 
         lv_tick_inc(5);            // drive LVGL time (esp_timer does this on device)

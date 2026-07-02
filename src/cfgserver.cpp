@@ -9,6 +9,20 @@
 #define FEED_WDT() ((void)0)
 #endif
 
+static String minutesToHHMM(int minutes) {
+  char buf[6];
+  snprintf(buf, sizeof(buf), "%02d:%02d", (minutes / 60) % 24, minutes % 60);
+  return String(buf);
+}
+
+static int hhmmToMinutes(const char* hhmm, int fallback) {
+  if (!hhmm) return fallback;
+  int h = 0, m = 0;
+  if (sscanf(hhmm, "%d:%d", &h, &m) != 2) return fallback;
+  if (h < 0 || h > 23 || m < 0 || m > 59) return fallback;
+  return h * 60 + m;
+}
+
 static String jsonEscape(const String& s) {
   String out;
   out.reserve(s.length() + 4);
@@ -123,6 +137,14 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .toast.success{background:#0e3d2c;color:#5df0b8;border:1px solid #1c7a57}
 .toast.error{background:#3d0f1a;color:#ff8fa6;border:1px solid #7a2340}
 .toast.info{background:#152a52;color:#8fc0ff;border:1px solid #2a4a8a}
+
+.star{background:none;border:none;font-size:1.15rem;color:var(--border2);cursor:pointer;flex:none;padding:0 4px;line-height:1;transition:color .15s,transform .12s}
+.star:hover{transform:scale(1.15)}
+.star.on{color:var(--gold)}
+.fieldsel{width:100%;background:transparent;border:none;color:#fff;font-size:1rem;font-weight:700;outline:none}
+.fieldsel option{background:var(--card)}
+.field input[type=range]{accent-color:var(--accent);font-size:1rem;padding:6px 0}
+.field input[type=time]{color-scheme:dark;font-size:1.05rem}
 </style>
 </head>
 <body>
@@ -180,6 +202,38 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 R"rawliteral(
 <div class="container">
   <div class="section">
+    <h2><span class="ico">&#128161;</span> Display</h2>
+    <p class="hint">Screen &amp; LED brightness, plus optional quiet hours when the display dims or switches off. Quiet hours follow the clock shown on the device (the current park's timezone).</p>
+    <div class="grid">
+      <div class="field"><label>Brightness &mdash; <span id="brtVal">100</span>%</label>
+        <input type="range" id="brt" min="5" max="100" value="100" oninput="$('brtVal').textContent=this.value"></div>
+      <div class="field"><label>Quiet hours</label>
+        <label class="switch"><input type="checkbox" id="qt_en"><span class="slider"></span></label></div>
+      <div class="field"><label>Quiet start</label><input type="time" id="qt_sta" value="22:00"></div>
+      <div class="field"><label>Quiet end</label><input type="time" id="qt_end" value="07:00"></div>
+      <div class="field"><label>Quiet brightness &mdash; <span id="qtBrtVal">0</span>% (0 = off)</label>
+        <input type="range" id="qt_brt" min="0" max="100" value="0" oninput="$('qtBrtVal').textContent=this.value"></div>
+    </div>
+  </div>
+  <div class="section">
+    <h2><span class="ico">&#11088;</span> Ride display options</h2>
+    <p class="hint">How rides are ordered and filtered on the device. Mark favorites with the star in the ride list above &mdash; they get a gold marker on the display.</p>
+    <div class="grid">
+      <div class="field"><label>Sort order</label>
+        <select id="sortMode" class="fieldsel"><option value="0">Park order</option><option value="1">Longest wait first</option></select></div>
+      <div class="field"><label>Favorites first</label>
+        <label class="switch"><input type="checkbox" id="favFirst" checked><span class="slider"></span></label></div>
+      <div class="field"><label>Skip closed rides</label>
+        <label class="switch"><input type="checkbox" id="skipClosed"><span class="slider"></span></label></div>
+      <div class="field"><label>Hide waits under</label>
+        <div class="in"><input type="number" id="minWait" min="0" max="240" step="1" value="0"><span class="unit">min</span></div></div>
+    </div>
+  </div>
+</div>
+)rawliteral"
+R"rawliteral(
+<div class="container">
+  <div class="section">
     <h2><span class="ico">&#128190;</span> Backup &amp; Restore</h2>
     <p class="hint">Export the current parks, ride filters and timing settings to a file, or restore a previously exported configuration.</p>
     <div class="toolbar" style="margin-bottom:0">
@@ -206,7 +260,7 @@ async function factoryReset(btn){
   btn.disabled=false;btn.innerHTML='Factory Reset';}
 </script>
 <script>
-let allParks=[];let allRides=[];let currentParkId=0;let rideFilterCache={};
+let allParks=[];let allRides=[];let currentParkId=0;let rideFilterCache={};let favCache={};
 const $=id=>document.getElementById(id);
 
 window.addEventListener('DOMContentLoaded',async()=>{
@@ -215,6 +269,13 @@ window.addEventListener('DOMContentLoaded',async()=>{
     $('rot_int').value=cfg.rotateInterval;
     $('closed_int').value=cfg.closedParkDisplayTime;
     $('time_int').value=cfg.timeUpdateInterval;
+    if(typeof cfg.brightness==='number'){$('brt').value=cfg.brightness;$('brtVal').textContent=cfg.brightness;}
+    $('qt_en').checked=!!cfg.quietEnabled;
+    if(cfg.quietStart)$('qt_sta').value=cfg.quietStart;
+    if(cfg.quietEnd)$('qt_end').value=cfg.quietEnd;
+    if(typeof cfg.quietBrightness==='number'){$('qt_brt').value=cfg.quietBrightness;$('qtBrtVal').textContent=cfg.quietBrightness;}
+    if(cfg.rideOptions){$('sortMode').value=cfg.rideOptions.sortMode||0;$('favFirst').checked=!!cfg.rideOptions.favoritesFirst;$('skipClosed').checked=!!cfg.rideOptions.skipClosed;$('minWait').value=cfg.rideOptions.minWait||0;}
+    if(cfg.rideFavorites)favCache=cfg.rideFavorites;
     if(cfg.enabledParks&&cfg.enabledParks.length){
       allParks=cfg.enabledParks.map(p=>({...p,enabled:true,group:"Configured"}));
       renderParkList();populateParkSelector(cfg.enabledParks);
@@ -263,7 +324,9 @@ function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('
 
 function saveCurrentRideFilterState(){if(!currentParkId)return;
   const enabledIds=allRides.filter(r=>r.enabled).map(r=>r.id);
-  rideFilterCache[currentParkId]=(enabledIds.length===allRides.length)?null:enabledIds;}
+  rideFilterCache[currentParkId]=(enabledIds.length===allRides.length)?null:enabledIds;
+  const favIds=allRides.filter(r=>r.favorite).map(r=>r.id);
+  favCache[currentParkId]=favIds.length?favIds:null;}
 
 async function fetchRidesForPark(parkId){currentParkId=parkId;
   const c=$('rideList');c.innerHTML='<p class="empty"><span class="spinner"></span> Loading rides...</p>';
@@ -271,6 +334,8 @@ async function fetchRidesForPark(parkId){currentParkId=parkId;
   try{const res=await fetch('/api/rides?parkId='+parkId);allRides=await res.json();
     if(rideFilterCache.hasOwnProperty(parkId)){const cached=rideFilterCache[parkId];
       for(const ride of allRides)ride.enabled=cached===null?true:cached.includes(ride.id);}
+    if(favCache.hasOwnProperty(parkId)){const favs=favCache[parkId];
+      for(const ride of allRides)ride.favorite=favs===null?false:favs.includes(ride.id);}
     renderRideList();
   }catch(e){c.innerHTML='<p class="empty" style="color:var(--red)">Failed to load rides.</p>';}}
 
@@ -298,18 +363,23 @@ function renderRideList(){const c=$('rideList');
   $('rideTools').style.display='flex';renderRideStats();
   let html='';
   for(const ride of allRides){
-    html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span>'+waitBadge(ride)+'</div>';
+    html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav('+ride.id+',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
   }
   c.innerHTML=html;}
 
 function toggleRide(id){const ride=allRides.find(r=>r.id===id);if(ride)ride.enabled=!ride.enabled;}
+function toggleFav(id,el){const ride=allRides.find(r=>r.id===id);if(!ride)return;
+  ride.favorite=!ride.favorite;el.classList.toggle('on',ride.favorite);}
 function selectAllRides(select){for(const ride of allRides)ride.enabled=select;renderRideList();}
 
 async function saveConfig(event){event.preventDefault();saveCurrentRideFilterState();
   const btn=$('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving...';
   const enabledParks=allParks.filter(p=>p.enabled).map(p=>({id:p.id,name:p.name}));
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
-  const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters};
+  const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
+  const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),
+    rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
     if(result.success)toast('&#10003; Saved! Display cycle restarting...','success');
@@ -338,9 +408,18 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
   // Explicit null clears stale filters for parks kept from the old config.
   const rideFilters={};const src=cfg.rideFilters||{};
   for(const park of cfg.enabledParks)rideFilters[park.id]=src.hasOwnProperty(park.id)?src[park.id]:null;
+  const rideFavorites={};const favSrc=cfg.rideFavorites||{};
+  for(const park of cfg.enabledParks)rideFavorites[park.id]=favSrc.hasOwnProperty(park.id)?favSrc[park.id]:null;
   const body={apiRefreshInterval:cfg.apiRefreshInterval,rotateInterval:cfg.rotateInterval,
     closedParkDisplayTime:cfg.closedParkDisplayTime,timeUpdateInterval:cfg.timeUpdateInterval,
-    enabledParks:cfg.enabledParks.map(p=>({id:p.id,name:p.name})),rideFilters};
+    enabledParks:cfg.enabledParks.map(p=>({id:p.id,name:p.name})),rideFilters,rideFavorites};
+  // Newer fields ride along when present (older exports simply omit them).
+  if(typeof cfg.brightness==='number')body.brightness=cfg.brightness;
+  if(typeof cfg.quietEnabled==='boolean'){body.quietEnabled=cfg.quietEnabled;
+    if(cfg.quietStart)body.quietStart=cfg.quietStart;
+    if(cfg.quietEnd)body.quietEnd=cfg.quietEnd;
+    if(typeof cfg.quietBrightness==='number')body.quietBrightness=cfg.quietBrightness;}
+  if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r=await res.json();
     if(r.success){toast('&#10003; Config imported! Reloading...','success');setTimeout(()=>location.reload(),1200);}
@@ -357,6 +436,50 @@ function escapeHtml(str){return String(str).replace(/&/g,'&amp;').replace(/</g,'
 </body>
 </html>
 )rawliteral";
+
+// Merge an incoming per-park map ({"parkId":[rideIds]} with null meaning
+// "clear this park's entry") into the stored JSON, dropping parks that are no
+// longer enabled. Used for both ride filters and ride favorites. Returns
+// false when the merged result would blow the NVS string budget — callers
+// must then reject the save (truncating would store unparseable JSON).
+static bool mergePerParkJson(const String& existing, JsonObject incoming,
+                             const std::vector<int>& keepParkIds, String& out) {
+  DynamicJsonDocument mergedDoc(8192);
+  JsonObject merged;
+  if (existing.length() > 0 && !deserializeJson(mergedDoc, existing)
+      && mergedDoc.is<JsonObject>()) {
+    merged = mergedDoc.as<JsonObject>();      // reuse existing (writable)
+  } else {
+    mergedDoc.clear();
+    merged = mergedDoc.to<JsonObject>();      // fresh, writable object
+  }
+
+  if (!incoming.isNull()) {
+    for (JsonPair kv : incoming) {
+      if (kv.value().isNull()) merged.remove(kv.key());   // clear this park
+      else                     merged[kv.key()] = kv.value();
+    }
+  }
+
+  // Remove entries for parks that are no longer enabled
+  std::vector<String> keysToRemove;
+  for (JsonPair kv : merged) {
+    int parkId = atoi(kv.key().c_str());
+    bool stillEnabled = false;
+    for (size_t i = 0; i < keepParkIds.size(); i++) {
+      if (keepParkIds[i] == parkId) { stillEnabled = true; break; }
+    }
+    if (!stillEnabled) keysToRemove.push_back(String(kv.key().c_str()));
+  }
+  for (size_t i = 0; i < keysToRemove.size(); i++) merged.remove(keysToRemove[i].c_str());
+
+  out = "";
+  if (merged.size() > 0) {
+    serializeJson(merged, out);
+    if (out.length() > 1900) return false;    // NVS string budget
+  }
+  return true;
+}
 
 ConfigWebServer::ConfigWebServer(ConfigManager& cfgMgr, QueueApi& api)
   : _server(80), _cfgMgr(cfgMgr), _api(api), _configUpdated(false) {}
@@ -448,6 +571,7 @@ void ConfigWebServer::handleApiRides() {
     json += ",\"isOpen\":";   json += rides[i].isOpen ? "true" : "false";
     json += ",\"waitTime\":"; json += rides[i].waitTime;
     json += ",\"enabled\":";  json += _cfgMgr.isRideEnabled(parkId, rides[i].id) ? "true" : "false";
+    json += ",\"favorite\":"; json += _cfgMgr.isRideFavorite(parkId, rides[i].id) ? "true" : "false";
     json += "}";
   }
   json += "]";
@@ -456,7 +580,7 @@ void ConfigWebServer::handleApiRides() {
 
 void ConfigWebServer::handleApiConfig() {
   const RuntimeConfig& cfg = _cfgMgr.getConfig();
-  DynamicJsonDocument doc(8192);
+  DynamicJsonDocument doc(12288);
   doc["apiRefreshInterval"]    = cfg.apiRefreshInterval / 1000;
   doc["rotateInterval"]        = cfg.rotateInterval / 1000;
   doc["closedParkDisplayTime"] = cfg.closedParkDisplayTime / 1000;
@@ -471,6 +595,24 @@ void ConfigWebServer::handleApiConfig() {
     DynamicJsonDocument fd(4096);
     if (!deserializeJson(fd, cfg.rideFiltersJson)) doc["rideFilters"] = fd.as<JsonObject>();
   }
+
+  doc["brightness"]      = cfg.brightness;
+  doc["quietEnabled"]    = cfg.quietHoursEnabled;
+  doc["quietStart"]      = minutesToHHMM(cfg.quietStartMin);
+  doc["quietEnd"]        = minutesToHHMM(cfg.quietEndMin);
+  doc["quietBrightness"] = cfg.quietBrightness;
+
+  JsonObject ro = doc.createNestedObject("rideOptions");
+  ro["sortMode"]       = cfg.sortMode;
+  ro["favoritesFirst"] = cfg.favoritesFirst;
+  ro["skipClosed"]     = cfg.skipClosedRides;
+  ro["minWait"]        = cfg.minWaitMinutes;
+
+  if (cfg.rideFavoritesJson.length() > 0) {
+    DynamicJsonDocument fav(4096);
+    if (!deserializeJson(fav, cfg.rideFavoritesJson)) doc["rideFavorites"] = fav.as<JsonObject>();
+  }
+
   String json; serializeJson(doc, json);
   _server.send(200, "application/json", json);
 }
@@ -512,44 +654,66 @@ void ConfigWebServer::handleSaveConfig() {
   _cfgMgr.saveEnabledParks(parksJson);
   FEED_WDT();
 
-  // Merge ride filters. Start from the existing stored filters as a WRITABLE
-  // object so parks the user didn't open this session keep their filter, then
-  // overlay the incoming ones. A null value for a park means "clear its filter"
-  // (all rides re-enabled), so future rides are shown too.
+  // Merge ride filters (and favorites — same shape). If the result exceeds
+  // the NVS budget the save is rejected outright: truncating the JSON would
+  // store an unparseable string that silently disables all filtering.
   JsonObject rideFiltersObj = doc["rideFilters"].as<JsonObject>();
-  DynamicJsonDocument mergedDoc(8192);
-  JsonObject merged;
-  String existingFilters = _cfgMgr.getConfig().rideFiltersJson;
-  if (existingFilters.length() > 0 && !deserializeJson(mergedDoc, existingFilters)
-      && mergedDoc.is<JsonObject>()) {
-    merged = mergedDoc.as<JsonObject>();      // reuse existing (writable)
-  } else {
-    mergedDoc.clear();
-    merged = mergedDoc.to<JsonObject>();      // fresh, writable object
-  }
-
-  if (!rideFiltersObj.isNull()) {
-    for (JsonPair kv : rideFiltersObj) {
-      if (kv.value().isNull()) merged.remove(kv.key());   // clear this park's filter
-      else                     merged[kv.key()] = kv.value();
-    }
-  }
-  // Remove orphaned filters
-  std::vector<String> keysToRemove;
-  for (JsonPair kv : merged) {
-    int parkId = atoi(kv.key().c_str());
-    bool stillEnabled = false;
-    for (size_t i = 0; i < parkIds.size(); i++) { if (parkIds[i] == parkId) { stillEnabled = true; break; } }
-    if (!stillEnabled) keysToRemove.push_back(String(kv.key().c_str()));
-  }
-  for (size_t i = 0; i < keysToRemove.size(); i++) merged.remove(keysToRemove[i].c_str());
-
   String filtersJson;
-  if (merged.size() > 0) {
-    serializeJson(merged, filtersJson);
-    if (filtersJson.length() > 1900) filtersJson = filtersJson.substring(0, 1900);
+  if (!mergePerParkJson(_cfgMgr.getConfig().rideFiltersJson, rideFiltersObj,
+                        parkIds, filtersJson)) {
+    _server.send(400, "application/json",
+                 "{\"success\":false,\"error\":\"Ride filters too large - use fewer per-ride selections\"}");
+    return;
   }
   _cfgMgr.saveRideFilters(filtersJson);
+  FEED_WDT();
+
+  JsonObject rideFavsObj = doc["rideFavorites"].as<JsonObject>();
+  String favoritesJson;
+  if (!mergePerParkJson(_cfgMgr.getConfig().rideFavoritesJson, rideFavsObj,
+                        parkIds, favoritesJson)) {
+    _server.send(400, "application/json",
+                 "{\"success\":false,\"error\":\"Too many favorites - unstar some rides\"}");
+    return;
+  }
+  _cfgMgr.saveRideFavorites(favoritesJson);
+  FEED_WDT();
+
+  // Display settings + ride options. Missing keys keep the current values so
+  // config files exported by older firmware still import cleanly.
+  {
+    const RuntimeConfig& cur = _cfgMgr.getConfig();
+    int brt = doc.containsKey("brightness") ? (int)doc["brightness"] : cur.brightness;
+    if (brt < 5)   brt = 5;      // never fully dark from the main slider
+    if (brt > 100) brt = 100;
+    bool qtEn  = doc.containsKey("quietEnabled") ? (bool)doc["quietEnabled"]
+                                                 : cur.quietHoursEnabled;
+    int qtSta  = doc.containsKey("quietStart")
+                   ? hhmmToMinutes(doc["quietStart"].as<const char*>(), cur.quietStartMin)
+                   : cur.quietStartMin;
+    int qtEnd  = doc.containsKey("quietEnd")
+                   ? hhmmToMinutes(doc["quietEnd"].as<const char*>(), cur.quietEndMin)
+                   : cur.quietEndMin;
+    int qtBrt  = doc.containsKey("quietBrightness") ? (int)doc["quietBrightness"]
+                                                    : cur.quietBrightness;
+    if (qtBrt < 0)   qtBrt = 0;
+    if (qtBrt > 100) qtBrt = 100;
+    _cfgMgr.saveDisplaySettings((uint8_t)brt, qtEn, (uint16_t)qtSta,
+                                (uint16_t)qtEnd, (uint8_t)qtBrt);
+
+    JsonObject ro = doc["rideOptions"].as<JsonObject>();
+    if (!ro.isNull()) {
+      int sortMode = ro["sortMode"] | (int)cur.sortMode;
+      if (sortMode != SORT_MODE_WAIT_DESC) sortMode = SORT_MODE_API_ORDER;
+      bool favFirst   = ro["favoritesFirst"] | cur.favoritesFirst;
+      bool skipClosed = ro["skipClosed"]     | cur.skipClosedRides;
+      int  minWait    = ro["minWait"]        | (int)cur.minWaitMinutes;
+      if (minWait < 0)   minWait = 0;
+      if (minWait > 240) minWait = 240;
+      _cfgMgr.saveRideOptions((uint8_t)sortMode, favFirst, skipClosed,
+                              (uint8_t)minWait);
+    }
+  }
   FEED_WDT();
 
   _configUpdated = true;
@@ -569,7 +733,7 @@ void ConfigWebServer::handleNotFound() {
 
 String ConfigWebServer::buildConfigPage() {
   String html;
-  html.reserve(24000);
+  html.reserve(32000);
   for (size_t i = 0; CONFIG_HTML[i] != '\0'; i++) html += (char)pgm_read_byte(&CONFIG_HTML[i]);
   return html;
 }

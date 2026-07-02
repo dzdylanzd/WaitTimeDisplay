@@ -18,7 +18,7 @@ All scripts are at the **repo root** — double-click or run from any terminal:
 |---|---|
 | `build_sim.bat` | Build the desktop simulator (first run configures CMake) |
 | `run_sim.bat` | Launch the simulator window |
-| `test.bat` | Build and run all 22 unit tests |
+| `test.bat` | Build and run all 59 unit tests |
 | `clean_all.bat` | Delete `sim/build/` and `tests/build/` |
 
 > Simulator config UI: **http://localhost:8080**  
@@ -53,7 +53,7 @@ The board target is `esp32-c6-devkitc-1` at 160 MHz. If upload fails, try loweri
 
 ### Entry point: `src/main.cpp`
 
-Creates six global singletons, wires them together, and calls `lv_timer_handler()` every loop iteration (required by LVGL).
+Creates eight global singletons (incl. `StatusLed` and `Button`), wires them together, and calls `lv_timer_handler()` every loop iteration (required by LVGL). The loop also polls the BOOT button and forwards events to `AppStateManager::onButtonEvent()`.
 
 ### Module responsibilities
 
@@ -67,8 +67,14 @@ Creates six global singletons, wires them together, and calls `lv_timer_handler(
 | `src/queueapi.cpp/h` | HTTP GET → JSON parse from queue-times.com. Caches park timezones (up to 20 entries). |
 | `src/wifimgr.cpp/h` | WiFi credential storage (NVS) and captive-portal provisioning. |
 | `src/cfgserver.cpp/h` | `WebServer`-based config UI on port 80: park/ride picker, timing sliders, factory reset (`POST /api/factory-reset` → NVS wipe + `ESP.restart()`). |
-| `src/tzhelper.cpp/h` | IANA → POSIX timezone mapping, NTP sync via `configTzTime()`. |
-| `src/config.h` | Hardware pin definitions and compile-time constants. |
+| `src/tzhelper.cpp/h` | IANA → POSIX timezone mapping, NTP sync via `configTzTime()`, `getLocalMinutesOfDay()` for quiet hours. |
+| `src/trendstore.cpp/h` | RAM-only wait-time history keyed by ride id (250 entries) — powers the ↑/↓ trend arrow. 5-min threshold; closed observations neither update nor report. |
+| `src/ridefilter.cpp/h` | Pure `applyDisplayOptions()`: skip-closed / min-wait filtering (reverts if it would empty the list) + favorites-first / wait-desc stable sort. |
+| `src/statusled.cpp/h` | Onboard WS2812 (GPIO8, `neopixelWrite`) mirrors the current ride's wait-level colour; brightness tracks the backlight. |
+| `src/button.cpp/h` | BOOT button (GPIO9, active-low): debounced short press = next ride, 700 ms long press = next park, 10 s hold = factory-reset warning screen, 20 s hold = factory reset + restart (release during the warning cancels). `update()` is a pure, tested state machine. |
+| `src/waitlevel.h` | Shared `pickWaitLevel()` enum — single source of the 15/30/45-min colour thresholds for display themes AND the LED. |
+| `src/quiethours.h` | Pure `inQuietWindow()` (handles overnight wrap; start==end = never quiet). |
+| `src/config.h` | Hardware pin definitions (incl. `RGB_LED_PIN` 8, `BOOT_BTN_PIN` 9) and compile-time constants. |
 | `lv_conf.h` | LVGL 8.3 configuration (project root, picked up via `-DLV_CONF_INCLUDE_SIMPLE`). |
 
 ### State machine (`SystemState` enum in `appstate.h`)
@@ -103,9 +109,9 @@ by a portal save or wiped by a factory reset.
   - Indigo header panel: park name in gold (Montserrat 16, circular scroll) + WiFi glyph and local time in periwinkle (right-aligned)
   - 1 px gold separator that dims as data ages (see `setDataFreshness`)
   - 3 px progress bar filled in the wait theme's accent colour (animated on ride change)
-  - Ride panel: 4 px accent stripe + ride name (Montserrat 20, circular scroll) + "3/12" index
-  - Wait panel: theme-tinted background, 2 px accent top border, big wait number (Montserrat 48) and a letter-spaced caps sub-label ("MINUTE WAIT", "CLOSED" states)
-  - Wait themes (`pickTheme`): green ≤ 15 min, amber ≤ 30, orange ≤ 45, red above, teal when closed
+  - Ride panel (48 px, two rows): 4 px accent stripe + ride name (Montserrat 20, circular scroll) + "3/12" index (gold `* 3/12` when the ride is a favorite); row 2 shows the themed-land name (Montserrat 12, muted — empty for parks without lands)
+  - Wait panel: theme-tinted background, 2 px accent top border, big wait number (Montserrat 48), trend arrow + delta top-right (`LV_SYMBOL_UP` red rising / `LV_SYMBOL_DOWN` green falling, hidden when flat/closed) and a letter-spaced caps sub-label ("MINUTE WAIT", "CLOSED" states)
+  - Wait themes (`pickTheme`, mapped from `pickWaitLevel` in waitlevel.h): green ≤ 15 min, amber ≤ 30, orange ≤ 45, red above, teal when closed
 
 - **`_scrStatus`** — generic info/error/splash:
   - Title with LVGL symbol glyph (Montserrat 20), gold underline
@@ -136,12 +142,20 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 | WiFi reconnect interval | 30 s | `config.h` `WIFI_RECONNECT_INTERVAL` |
 
 ### NVS namespaces
-- `"queuewatch"` — `ConfigManager` (parks, ride filters, timings) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
+- `"queuewatch"` — `ConfigManager` (parks, ride filters/favorites, timings, display + ride-display options) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
+- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt` (brightness + quiet hours), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
 
 ### Data flow
-1. `QueueApi::fetchRideData()` populates a fixed `RideInfo[MAX_RIDES]` array (no heap allocation for ride data).
+1. `QueueApi::fetchRideData()` populates a fixed `RideInfo[MAX_RIDES]` array (no heap allocation for ride data). Each ride carries its `land` name (empty for lands-less parks like Tokyo).
 2. `AppStateManager::applyRideFilter()` in-place compacts the array to only enabled rides.
-3. `AppStateManager::refreshRideData()` detects whether only wait-times changed vs. rides added/removed/renamed and repaints only the wait panel or the whole screen accordingly.
+3. `AppStateManager::annotateRides()` stamps trend (via `TrendStore`) and favorite flags, then `applyRideDisplayOptions()` filters/sorts per the user's global options.
+4. `AppStateManager::refreshRideData()` detects whether only wait-times changed vs. rides added/removed/renamed and repaints only the wait panel or the whole screen accordingly. (Wait-desc sorting can reorder on refresh — detected as a structure change → full repaint.)
+
+### Brightness / quiet hours / LED / button
+- `AppStateManager::applyBrightness()` runs every ~10 s in ALL states: quiet-hours window (park-local clock, `inQuietWindow`) → `quietBrightness`, else `brightness`; calls `LCD_SetBacklight()` only on change. Fails bright before NTP sync.
+- The WS2812 mirrors `pickWaitLevel()` of the currently shown ride (teal when the closed-park screen shows); off outside `WAIT_TIME_CYCLE` and when quiet-hours brightness is 0.
+- BOOT button Short/Long only act in `WAIT_TIME_CYCLE`: Short → `advanceRide()`, Long → `advanceToNextPark()`. Sim: N / P keys.
+- **Factory reset by button**: holding BOOT 10 s fires `HoldWarning` → warning screen ("Are you sure...?"), red LED, backlight forced ≥30%, and `AppStateManager::update()` freezes (`_resetWarningActive`). Releasing fires `HoldCancel` → screen restored per state. Holding to 20 s fires `HoldReset` → `showFactoryResetting()` + `ConfigManager::factoryReset()` + `ESP.restart()`. Works in any state except the blocking captive portal (which never polls the button). Sim: W = warning, X = cancel.
 
 ---
 
@@ -166,7 +180,7 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 | Stub | Replaces | Notes |
 |---|---|---|
-| `Arduino.h` | ESP32 Arduino core | `String`, `millis()`, `delay()`, `Serial` |
+| `Arduino.h` | ESP32 Arduino core | `String`, `millis()`, `delay()`, `Serial`, GPIO no-ops (`pinMode`, `digitalRead`→HIGH, `neopixelWrite`). NOTE: deliberately does NOT define `INPUT`/`OUTPUT` macros — `INPUT` is a winuser.h struct type. |
 | `WiFi.h` | `<WiFi.h>` | 1.5 s connection delay; `localIP()` returns `"localhost:8080"` |
 | `wifi_sim.cpp` | — | `WiFiClass WiFi` singleton definition |
 | `wifimgr_sim.cpp` | `src/wifimgr.cpp` | Credentials always "configured"; `connect()` calls `WiFi.begin()` |
@@ -200,20 +214,28 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no SDL. HTTP responses are preset via `tests/HTTPClient.h` (MockHTTP map).
 
-### What is tested (23 test cases, 78 assertions)
+### What is tested (59 test cases, 207 assertions)
 
 **`test_configmanager.cpp`** — ConfigManager  
 - `parseEnabledParks`: valid JSON / empty / malformed / invalid IDs  
 - `isRideEnabled`: no filter / park missing / ride in filter / ride not in filter / cache invalidation  
-- `saveEnabledParks` round-trip  
-- `hasEnabledParks`  
-- `saveTimings`  
-- `factoryReset`: everything back to defaults, survives reload  
+- `saveEnabledParks` round-trip / `hasEnabledParks` / `saveTimings`  
+- `saveDisplaySettings`, `saveRideOptions` round-trips  
+- `isRideFavorite`: empty / listed / missing park / cache invalidation  
+- `factoryReset`: everything (incl. new settings) back to defaults, survives reload  
 
 **`test_queueapi_json.cpp`** — QueueApi  
-- `fetchRideData`: valid parse / HTTP error / parkId ≤ 0 / MAX_RIDES limit / malformed JSON  
+- `fetchRideData`: valid parse / land names / HTTP error / parkId ≤ 0 / MAX_RIDES limit / malformed JSON  
 - `fetchAvailableParks`: valid / HTTP error  
 - `getParkTimezone`: correct TZ / unknown park / cache hit  
+
+**`test_quiethours.cpp`** — `inQuietWindow`: same-day window, overnight wrap, empty window, boundaries  
+
+**`test_trendstore.cpp`** — TrendStore: first sighting, threshold, sub-threshold drift, closed rides, park interleaving, capacity eviction  
+
+**`test_ridefilter.cpp`** — `applyDisplayOptions`: skip-closed, min-wait, revert-if-empty, wait-desc sort (stable, closed last), favorites-first, combinations  
+
+**`test_button.cpp`** — Button state machine: debounce, short press, long press (fires once while held), 10 s HoldWarning, HoldCancel on release, 20 s HoldReset (release swallowed), skip-past-20 s polling, back-to-back presses  
 
 ### Sub-scripts in `tests/`
 

@@ -2,6 +2,7 @@
 #include "lcd_st7789.h"
 #include "lvgl_driver.h"
 #include "tzhelper.h"
+#include "waitlevel.h"
 
 // ---------------------------------------------------------------------------
 // Colour palette — "Magic Night" theme
@@ -40,12 +41,15 @@ static const WaitTheme T_ORANGE = { LV_COLOR_MAKE(0x18,0x07,0x00), LV_COLOR_MAKE
 static const WaitTheme T_RED    = { LV_COLOR_MAKE(0x18,0x00,0x05), LV_COLOR_MAKE(0x22,0x00,0x08), LV_COLOR_MAKE(0xFF,0x17,0x44) };
 static const WaitTheme T_TEAL   = { LV_COLOR_MAKE(0x00,0x0E,0x18), LV_COLOR_MAKE(0x00,0x14,0x22), LV_COLOR_MAKE(0x18,0xFF,0xFF) };
 
+// Thresholds live in pickWaitLevel (waitlevel.h) — shared with the status LED.
 static const WaitTheme& pickTheme(int waitTime, bool isOpen) {
-    if (!isOpen)        return T_TEAL;
-    if (waitTime <= 15) return T_GREEN;
-    if (waitTime <= 30) return T_AMBER;
-    if (waitTime <= 45) return T_ORANGE;
-    return T_RED;
+    switch (pickWaitLevel(waitTime, isOpen)) {
+        case WaitLevel::Closed: return T_TEAL;
+        case WaitLevel::Green:  return T_GREEN;
+        case WaitLevel::Amber:  return T_AMBER;
+        case WaitLevel::Orange: return T_ORANGE;
+        default:                return T_RED;
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -54,8 +58,8 @@ static const WaitTheme& pickTheme(int waitTime, bool isOpen) {
 //  Y=0   Header 36px  (indigo→navy gradient)
 //  Y=36  Gold separator 1px
 //  Y=37  Progress bar 3px  (themed accent fill)
-//  Y=40  Ride panel 40px   (left accent stripe + ride name + index)
-//  Y=80  Wait panel 92px   (gradient + big number + sub-label)
+//  Y=40  Ride panel 48px   (row 1: name + index, row 2: land + NEXT hint)
+//  Y=88  Wait panel 84px   (big number + trend arrow + sub-label)
 // ---------------------------------------------------------------------------
 static constexpr int SCR_W = LCD_W;  // 320
 static constexpr int SCR_H = LCD_H;  // 172
@@ -72,21 +76,29 @@ static constexpr int PROG_Y = GOLD_Y + GOLD_H;  // 37
 static constexpr int PROG_H = 3;
 
 static constexpr int RIDE_Y        = PROG_Y + PROG_H;  // 40
-static constexpr int RIDE_H        = 40;
-static constexpr int RIDE_PAD_Y    = 9;
+static constexpr int RIDE_H        = 48;
+static constexpr int RIDE_PAD_Y    = 4;               // row 1 top
 static constexpr int RIDE_ACCENT_W = 4;
 static constexpr int RIDE_NAME_X   = RIDE_ACCENT_W + 6;  // 10
 static constexpr int RIDE_NAME_W   = 264;
-static constexpr int RIDE_IDX_X    = 274;
-static constexpr int RIDE_IDX_W    = SCR_W - RIDE_IDX_X - 4;  // 42
+static constexpr int RIDE_NAME_H   = 24;
+static constexpr int RIDE_IDX_X    = 264;
+static constexpr int RIDE_IDX_W    = SCR_W - RIDE_IDX_X - 4;  // 52 ("* 12/12")
+static constexpr int RIDE_ROW2_Y   = 29;
+static constexpr int RIDE_ROW2_H   = 16;
+static constexpr int RIDE_LAND_W   = SCR_W - RIDE_NAME_X - 10;   // full width
 
-static constexpr int WAIT_Y     = RIDE_Y + RIDE_H;  // 80
-static constexpr int WAIT_H     = SCR_H - WAIT_Y;   // 92
+static constexpr int WAIT_Y     = RIDE_Y + RIDE_H;  // 88
+static constexpr int WAIT_H     = SCR_H - WAIT_Y;   // 84
 static constexpr int WAIT_BDR_H = 2;
-static constexpr int WAIT_NUM_Y = 6;
-static constexpr int WAIT_NUM_H = 60;
-static constexpr int WAIT_SUB_Y = WAIT_NUM_Y + WAIT_NUM_H + 2;  // 68
+static constexpr int WAIT_NUM_Y = 2;
+static constexpr int WAIT_NUM_H = 56;
+static constexpr int WAIT_SUB_Y = WAIT_NUM_Y + WAIT_NUM_H + 2;  // 60
 static constexpr int WAIT_SUB_H = WAIT_H - WAIT_SUB_Y;          // 24
+static constexpr int TREND_W    = 64;
+static constexpr int TREND_X    = SCR_W - TREND_W - 6;
+static constexpr int TREND_Y    = 10;
+static constexpr int TREND_H    = 24;
 
 // ---------------------------------------------------------------------------
 // Widget helpers
@@ -188,21 +200,27 @@ void DisplayController::_buildMainScreen() {
     lv_bar_set_range(_barProgress, 0, 100);
     lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
 
-    // ── Ride panel ───────────────────────────────────────────────────────────
+    // ── Ride panel: two rows ─────────────────────────────────────────────────
     lv_obj_t* ridePanel = makePanel(_scrMain, 0, RIDE_Y, SCR_W, RIDE_H, C_RIDE_BG);
 
     // Left colour stripe — updates with wait theme
     _objRideAccent = makePanel(ridePanel, 0, 0, RIDE_ACCENT_W, RIDE_H, T_GREEN.accent);
 
     _lblRideName = makeLabel(ridePanel, RIDE_NAME_X, RIDE_PAD_Y, RIDE_NAME_W,
-                             RIDE_H - RIDE_PAD_Y,
+                             RIDE_NAME_H,
                              &lv_font_montserrat_20, C_RIDE_TXT,
                              LV_TEXT_ALIGN_LEFT, LV_LABEL_LONG_SCROLL_CIRCULAR);
 
-    _lblRideIdx = makeLabel(ridePanel, RIDE_IDX_X, RIDE_PAD_Y + 2, RIDE_IDX_W,
-                            RIDE_H - RIDE_PAD_Y - 2,
+    _lblRideIdx = makeLabel(ridePanel, RIDE_IDX_X, RIDE_PAD_Y + 4, RIDE_IDX_W,
+                            RIDE_NAME_H - 4,
                             &lv_font_montserrat_14, C_IDX_TXT,
                             LV_TEXT_ALIGN_RIGHT);
+
+    // Row 2: themed-land name ("Frontierland", "Tomorrowland", ...)
+    _lblLand = makeLabel(ridePanel, RIDE_NAME_X, RIDE_ROW2_Y, RIDE_LAND_W,
+                         RIDE_ROW2_H,
+                         &lv_font_montserrat_12, C_IDX_TXT,
+                         LV_TEXT_ALIGN_LEFT);
 
     // ── Wait panel: solid themed background + accent border + number ─────────
     _objWaitPanel = makePanel(_scrMain, 0, WAIT_Y, SCR_W, WAIT_H, T_GREEN.bgBot);
@@ -212,6 +230,11 @@ void DisplayController::_buildMainScreen() {
     _lblWaitNum = makeLabel(_objWaitPanel, 0, WAIT_NUM_Y, SCR_W, WAIT_NUM_H,
                             &lv_font_montserrat_48, T_GREEN.accent,
                             LV_TEXT_ALIGN_CENTER);
+
+    // Trend arrow + delta ("▲ 10") — top-right of the wait panel
+    _lblTrend = makeLabel(_objWaitPanel, TREND_X, TREND_Y, TREND_W, TREND_H,
+                          &lv_font_montserrat_20, C_BODY_TXT,
+                          LV_TEXT_ALIGN_RIGHT);
 
     _lblWaitSub = makeLabel(_objWaitPanel, 0, WAIT_SUB_Y, SCR_W, WAIT_SUB_H,
                             &lv_font_montserrat_14, C_BODY_TXT,
@@ -348,8 +371,23 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
         lv_label_set_text(_lblWaitSub, "MINUTE WAIT");  // reads right for 1 and many
     }
 
+    // Trend arrow: red rising (wait getting worse), green falling. Hidden
+    // when flat or closed. Arrow glyphs ship in every Montserrat font.
+    if (!ride.isOpen || ride.trend == 0) {
+        lv_label_set_text(_lblTrend, "");
+    } else {
+        int deltaAbs = ride.trendDelta < 0 ? -ride.trendDelta : ride.trendDelta;
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%s %d",
+                 ride.trend > 0 ? LV_SYMBOL_UP : LV_SYMBOL_DOWN, deltaAbs);
+        lv_label_set_text(_lblTrend, buf);
+        lv_obj_set_style_text_color(_lblTrend,
+            ride.trend > 0 ? T_RED.accent : T_GREEN.accent, LV_PART_MAIN);
+    }
+
     _lastWaitTime = ride.waitTime;
     _lastIsOpen   = ride.isOpen;
+    _lastTrend    = ride.trend;
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +396,11 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
 void DisplayController::_setRideName(const String& name) {
     lv_label_set_text(_lblRideName, name.c_str());
     _lastRideName = name;
+}
+
+void DisplayController::_setLand(const String& land) {
+    lv_label_set_text(_lblLand, land.c_str());   // "" collapses the row
+    _lastLand = land;
 }
 
 // ---------------------------------------------------------------------------
@@ -382,7 +425,7 @@ void DisplayController::setRideCount(int count) {
     _rideCount = count;
 }
 
-void DisplayController::drawProgressBar(int currentIdx, int totalCount) {
+void DisplayController::drawProgressBar(int currentIdx, int totalCount, bool favorite) {
     if (totalCount <= 0) {
         lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
         lv_label_set_text(_lblRideIdx, "");
@@ -390,30 +433,40 @@ void DisplayController::drawProgressBar(int currentIdx, int totalCount) {
     }
     int pct = (currentIdx + 1) * 100 / totalCount;
     lv_bar_set_value(_barProgress, pct, LV_ANIM_ON);
-    char buf[10];
-    snprintf(buf, sizeof(buf), "%d/%d", currentIdx + 1, totalCount);
+    char buf[12];
+    snprintf(buf, sizeof(buf), "%s%d/%d", favorite ? "* " : "",
+             currentIdx + 1, totalCount);
     lv_label_set_text(_lblRideIdx, buf);
+    // Gold star marker when the current ride is a favorite
+    lv_obj_set_style_text_color(_lblRideIdx, favorite ? C_PARK_TXT : C_IDX_TXT,
+                                LV_PART_MAIN);
+    _lastFavorite = favorite;
 }
 
 void DisplayController::displayRide(const RideInfo& ride, int rideIdx) {
     _loadMain();
     _setRideName(ride.name);
-    if (_rideCount > 0) drawProgressBar(rideIdx, _rideCount);
+    _setLand(ride.land);
+    if (_rideCount > 0) drawProgressBar(rideIdx, _rideCount, ride.favorite);
     _applyWaitWidgets(ride);
     _lastRideIdx = rideIdx;
 }
 
 void DisplayController::updateRideIfChanged(const RideInfo& ride, int rideIdx) {
     const bool nameChanged = (ride.name != _lastRideName);
-    const bool idxChanged  = (rideIdx  != _lastRideIdx);
+    const bool landChanged = (ride.land != _lastLand);
+    const bool idxChanged  = (rideIdx  != _lastRideIdx ||
+                              ride.favorite != _lastFavorite);
     const bool waitChanged = (ride.waitTime != _lastWaitTime ||
-                              ride.isOpen   != _lastIsOpen);
+                              ride.isOpen   != _lastIsOpen   ||
+                              ride.trend    != _lastTrend);
 
-    if (!nameChanged && !idxChanged && !waitChanged) return;
+    if (!nameChanged && !landChanged && !idxChanged && !waitChanged) return;
 
     if (nameChanged) _setRideName(ride.name);
+    if (landChanged) _setLand(ride.land);
     if (idxChanged && _rideCount > 0) {
-        drawProgressBar(rideIdx, _rideCount);
+        drawProgressBar(rideIdx, _rideCount, ride.favorite);
         _lastRideIdx = rideIdx;
     }
     if (waitChanged) _applyWaitWidgets(ride);
@@ -476,10 +529,36 @@ void DisplayController::showNoData(NoDataReason reason) {
     }
 }
 
+void DisplayController::showFactoryResetWarning() {
+    _loadStatus();
+    lv_obj_set_style_text_color(_lblStTitle, T_RED.accent, LV_PART_MAIN);
+    lv_label_set_text(_lblStTitle, LV_SYMBOL_WARNING "  Factory Reset?");
+    lv_obj_set_style_text_color(_lblStSub, T_RED.accent, LV_PART_MAIN);
+    lv_label_set_text(_lblStSub, "Are you sure you want to do this?");
+    lv_label_set_text(_lblStBody,
+        "Keep holding to erase WiFi + all settings.\nRelease the button to cancel.");
+    lv_label_set_text(_lblStExtra, "");
+}
+
+// The caller restarts the device right after this returns, so the screen is
+// loaded directly and painted NOW — a fade animation would never finish.
+void DisplayController::showFactoryResetting() {
+    lv_obj_set_style_text_color(_lblStTitle, T_RED.accent, LV_PART_MAIN);
+    lv_label_set_text(_lblStTitle, LV_SYMBOL_TRASH "  Resetting...");
+    lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
+    lv_label_set_text(_lblStSub, "Erasing WiFi and all settings");
+    lv_label_set_text(_lblStBody, "The device will restart into WiFi setup.");
+    lv_label_set_text(_lblStExtra, "");
+    if (lv_scr_act() != _scrStatus) lv_scr_load(_scrStatus);
+    lv_refr_now(NULL);
+}
+
 void DisplayController::showClosedPark(const String& parkName) {
     _loadMain();
     drawParkName(parkName, true);
     _setRideName("All rides closed");
+    _setLand("");
+    lv_label_set_text(_lblTrend, "");
     lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
     lv_label_set_text(_lblRideIdx, "");
 

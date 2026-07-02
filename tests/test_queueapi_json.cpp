@@ -81,6 +81,22 @@ TEST_CASE("fetchRideData: parses rides correctly") {
     CHECK(rides[3].waitTime == 45);
 }
 
+TEST_CASE("fetchRideData: rides carry their land name") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks/1/queue_times.json", RIDE_JSON);
+
+    QueueApi api;
+    RideInfo rides[MAX_RIDES]; int count = 0;
+    REQUIRE(api.fetchRideData(1, rides, count, MAX_RIDES));
+    REQUIRE(count == 4);
+    CHECK(rides[0].land == "Fantasyland");
+    CHECK(rides[2].land == "Fantasyland");
+    CHECK(rides[3].land == "Tomorrowland");
+    // Fetch annotations start neutral
+    CHECK(rides[0].trend == 0);
+    CHECK(rides[0].favorite == false);
+}
+
 TEST_CASE("fetchRideData: parses top-level rides array (Tokyo format)") {
     MockHTTP::clear();
     MockHTTP::set("https://queue-times.com/parks/274/queue_times.json", TOKYO_RIDE_JSON);
@@ -97,6 +113,7 @@ TEST_CASE("fetchRideData: parses top-level rides array (Tokyo format)") {
     CHECK(rides[0].waitTime == 60);
     CHECK(rides[1].isOpen   == true);
     CHECK(rides[2].isOpen   == false);
+    CHECK(rides[0].land     == "");   // no lands → no land name
 }
 
 TEST_CASE("fetchRideData: returns false on HTTP error") {

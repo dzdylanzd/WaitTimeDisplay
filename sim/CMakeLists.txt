@@ -47,6 +47,10 @@ set(SIM_SOURCES
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
     ${SRC_DIR}/cfgserver.cpp
+    ${SRC_DIR}/trendstore.cpp
+    ${SRC_DIR}/ridefilter.cpp
+    ${SRC_DIR}/statusled.cpp
+    ${SRC_DIR}/button.cpp
     ${LVGL_SOURCES}
 )
 

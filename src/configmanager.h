@@ -12,6 +12,10 @@
 #define DEFAULT_CLOSED_PARK_DISPLAY_TIME  20000UL  // 20 s
 #define DEFAULT_TIME_UPDATE_INTERVAL      20000UL  // 20 s (clock shows HH:MM)
 
+// Ride sort order on the device (RuntimeConfig::sortMode)
+#define SORT_MODE_API_ORDER  0
+#define SORT_MODE_WAIT_DESC  1
+
 struct RuntimeConfig {
   unsigned long apiRefreshInterval    = DEFAULT_API_REFRESH_INTERVAL;
   unsigned long rotateInterval        = DEFAULT_ROTATE_INTERVAL;
@@ -21,6 +25,20 @@ struct RuntimeConfig {
   std::vector<int>    enabledParkIds;
   std::vector<String> enabledParkNames;
   String              rideFiltersJson;
+
+  // ---- Display: backlight + quiet hours ----
+  uint8_t  brightness        = 100;     // 5–100 %
+  bool     quietHoursEnabled = false;
+  uint16_t quietStartMin     = 22 * 60; // minutes since midnight, park-local
+  uint16_t quietEndMin       = 7 * 60;
+  uint8_t  quietBrightness   = 0;       // 0 = backlight off during quiet hours
+
+  // ---- Ride display options (global) ----
+  uint8_t sortMode        = SORT_MODE_API_ORDER;
+  bool    favoritesFirst  = true;
+  bool    skipClosedRides = false;
+  uint8_t minWaitMinutes  = 0;          // hide open rides waiting < N min
+  String  rideFavoritesJson;            // {"<parkId>":[rideId,...]}
 };
 
 class ConfigManager {
@@ -37,6 +55,13 @@ public:
   void saveEnabledParks(const String& parksJson);
   void saveRideFilters(const String& filtersJson);
 
+  void saveDisplaySettings(uint8_t brightness, bool quietEnabled,
+                           uint16_t quietStartMin, uint16_t quietEndMin,
+                           uint8_t quietBrightness);
+  void saveRideOptions(uint8_t sortMode, bool favoritesFirst,
+                       bool skipClosedRides, uint8_t minWaitMinutes);
+  void saveRideFavorites(const String& favoritesJson);
+
   // Wipe the entire NVS namespace (parks, filters, timings AND the WiFi
   // credentials WiFiManager keeps there) and reset to compile-time defaults.
   void factoryReset();
@@ -49,6 +74,7 @@ public:
                          std::vector<String>& outNames);
 
   bool isRideEnabled(int parkId, int rideId) const;
+  bool isRideFavorite(int parkId, int rideId) const;
 
 private:
   Preferences   _prefs;
@@ -57,7 +83,11 @@ private:
   mutable std::map<int, std::vector<int>> _rideFilterCache;
   mutable bool _rideFilterCacheValid = false;
 
+  mutable std::map<int, std::vector<int>> _favoriteCache;
+  mutable bool _favoriteCacheValid = false;
+
   void rebuildRideFilterCache() const;
+  void rebuildFavoriteCache() const;
 
   static constexpr const char* NVS_NAMESPACE = "queuewatch";
 };

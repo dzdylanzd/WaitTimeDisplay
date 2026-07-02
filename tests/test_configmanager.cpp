@@ -121,6 +121,57 @@ TEST_CASE("saveTimings: values reflected in getConfig immediately") {
     CHECK(cfg.timeUpdateInterval    == 45000);
 }
 
+// ── saveDisplaySettings ───────────────────────────────────────────────────────
+
+TEST_CASE("saveDisplaySettings: values reflected in getConfig") {
+    ConfigManager mgr;
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60 + 30, 10);
+    const auto& cfg = mgr.getConfig();
+    CHECK(cfg.brightness        == 40);
+    CHECK(cfg.quietHoursEnabled == true);
+    CHECK(cfg.quietStartMin     == 21 * 60);
+    CHECK(cfg.quietEndMin       == 6 * 60 + 30);
+    CHECK(cfg.quietBrightness   == 10);
+}
+
+// ── saveRideOptions ───────────────────────────────────────────────────────────
+
+TEST_CASE("saveRideOptions: values reflected in getConfig") {
+    ConfigManager mgr;
+    mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 15);
+    const auto& cfg = mgr.getConfig();
+    CHECK(cfg.sortMode        == SORT_MODE_WAIT_DESC);
+    CHECK(cfg.favoritesFirst  == false);
+    CHECK(cfg.skipClosedRides == true);
+    CHECK(cfg.minWaitMinutes  == 15);
+}
+
+// ── isRideFavorite ────────────────────────────────────────────────────────────
+
+TEST_CASE("isRideFavorite: empty favorites — nothing is a favorite") {
+    ConfigManager mgr;
+    CHECK_FALSE(mgr.isRideFavorite(1, 100));
+}
+
+TEST_CASE("isRideFavorite: only listed rides are favorites") {
+    ConfigManager mgr;
+    mgr.saveRideFavorites(R"({"5":[10,20]})");
+    CHECK(mgr.isRideFavorite(5, 10));
+    CHECK(mgr.isRideFavorite(5, 20));
+    CHECK_FALSE(mgr.isRideFavorite(5, 30));
+    // Unlike the ride filter, a missing park means NOT favorite
+    CHECK_FALSE(mgr.isRideFavorite(99, 10));
+}
+
+TEST_CASE("isRideFavorite: cache re-built after saveRideFavorites") {
+    ConfigManager mgr;
+    mgr.saveRideFavorites(R"({"2":[7]})");
+    CHECK(mgr.isRideFavorite(2, 7));
+    mgr.saveRideFavorites(R"({"2":[8]})");
+    CHECK(mgr.isRideFavorite(2, 8));
+    CHECK_FALSE(mgr.isRideFavorite(2, 7));
+}
+
 // ── factoryReset ──────────────────────────────────────────────────────────────
 
 TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
@@ -128,8 +179,12 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     mgr.saveTimings(120000, 15000, 25000, 45000);
     mgr.saveEnabledParks(R"([{"id":1,"name":"Park"}])");
     mgr.saveRideFilters(R"({"1":[10,20]})");
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10);
+    mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 15);
+    mgr.saveRideFavorites(R"({"1":[10]})");
     REQUIRE(mgr.hasEnabledParks());
     REQUIRE_FALSE(mgr.isRideEnabled(1, 99));
+    REQUIRE(mgr.isRideFavorite(1, 10));
 
     mgr.factoryReset();
 
@@ -141,6 +196,13 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     CHECK(cfg.closedParkDisplayTime == DEFAULT_CLOSED_PARK_DISPLAY_TIME);
     CHECK(cfg.timeUpdateInterval    == DEFAULT_TIME_UPDATE_INTERVAL);
     CHECK(mgr.isRideEnabled(1, 99));  // filter gone — everything enabled again
+    CHECK(cfg.brightness        == 100);
+    CHECK(cfg.quietHoursEnabled == false);
+    CHECK(cfg.sortMode          == SORT_MODE_API_ORDER);
+    CHECK(cfg.favoritesFirst    == true);
+    CHECK(cfg.skipClosedRides   == false);
+    CHECK(cfg.minWaitMinutes    == 0);
+    CHECK_FALSE(mgr.isRideFavorite(1, 10));
 
     // Values survive (as defaults) across a reload
     mgr.load();

@@ -1,15 +1,23 @@
 #include <WiFi.h>
 #include "appstate.h"
 #include "tzhelper.h"
+#include "quiethours.h"
+#include "ridefilter.h"
+#include "waitlevel.h"
+#include "lcd_st7789.h"
+
+// How often the quiet-hours window / brightness setting is re-evaluated.
+static constexpr unsigned long BRIGHTNESS_CHECK_INTERVAL = 10000UL;
 
 AppStateManager::AppStateManager(WiFiManager& wifi, QueueApi& api,
                                   ConfigManager& cfg, DisplayController& display,
-                                  ConfigWebServer& webServer)
+                                  ConfigWebServer& webServer, StatusLed& led)
   : _wifi(wifi), _api(api), _cfg(cfg),
-    _display(display), _webServer(webServer) {}
+    _display(display), _webServer(webServer), _led(led) {}
 
 void AppStateManager::begin() {
   reloadRuntimeConfig();
+  applyBrightness(true);   // LCD_Init leaves the backlight at 100%
   if (!_wifi.isConfigured()) transitionTo(SystemState::WIFI_CONFIG_PORTAL);
   else                       transitionTo(SystemState::WIFI_CONNECTING);
 }
@@ -17,9 +25,21 @@ void AppStateManager::begin() {
 void AppStateManager::update() {
   unsigned long now = millis();
 
+  // Quiet hours must also dim status/error screens, so this runs in every
+  // state, on a coarse timer.
+  if (now - _lastBrightnessCheck >= BRIGHTNESS_CHECK_INTERVAL) {
+    _lastBrightnessCheck = now;
+    if (!_resetWarningActive) applyBrightness();
+  }
+
+  // The factory-reset warning freezes everything: no rotation, no refresh,
+  // no screen changes until the button is released (cancel) or held to 20 s.
+  if (_resetWarningActive) return;
+
   if (_webServer.isConfigUpdated()) {
     _webServer.clearConfigFlag();
     restartCycle();
+    applyBrightness(true);   // pick up a changed brightness immediately
     transitionTo(SystemState::WAIT_TIME_CYCLE);
     return;
   }
@@ -141,6 +161,7 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
       _display.showClosedPark(_currentParkName);
       _showingClosedPark = true;
       _closedParkStart = now;
+      updateLed();
     } else if (now - _closedParkStart >= _cfgClosedParkDisplayTime) {
       advanceToNextPark();
     }
@@ -162,14 +183,7 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
   }
 
   if (now - _lastRotate >= _cfgRotateInterval) {
-    _currentRideIndex++;
-    if (_currentRideIndex >= _rideCount) {
-      advanceToNextPark();
-    } else {
-      _display.drawParkName(_currentParkName, false);
-      _display.updateRideIfChanged(_rides[_currentRideIndex], _currentRideIndex);
-    }
-    _lastRotate = now;
+    advanceRide();
   }
 
   if (now - _lastApiFetch >= _cfgApiRefreshInterval) {
@@ -195,16 +209,21 @@ void AppStateManager::refreshRideData() {
   if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) return;
 
   applyRideFilter();
+  annotateRides();
+  applyRideDisplayOptions();
   _display.setRideCount(_rideCount);
   _display.setDataFreshness(0);
   if (_rideCount > 0 && _currentRideIndex >= _rideCount) _currentRideIndex = 0;
 
+  // NOTE: wait-desc sorting can reorder rides between refreshes; the name
+  // diff below detects that as a structure change and repaints fully.
   bool structureChanged = (_rideCount != prevCount);
   bool waitsChanged     = false;
   for (int i = 0; !structureChanged && i < _rideCount; i++) {
     if (_rides[i].id != prevId[i] || _rides[i].name != _lastRideNames[i])
       structureChanged = true;
-    else if (_rides[i].waitTime != prevWait[i] || _rides[i].isOpen != prevOpen[i])
+    else if (_rides[i].waitTime != prevWait[i] || _rides[i].isOpen != prevOpen[i] ||
+             _rides[i].trend != 0)
       waitsChanged = true;
   }
 
@@ -218,6 +237,7 @@ void AppStateManager::refreshRideData() {
   } else if (waitsChanged) {
     _display.redrawWaitTime(_rides[_currentRideIndex]);
   }
+  updateLed();
 }
 
 // ==================================================================
@@ -273,6 +293,7 @@ void AppStateManager::tickReconnecting(unsigned long now) {
 void AppStateManager::transitionTo(SystemState newState) {
   _state = newState;
   _stateEnterTime = millis();
+  if (newState != SystemState::WAIT_TIME_CYCLE) _led.off();
   if (newState == SystemState::STARTUP_INFO) _startupScreenShown = false;
   switch (newState) {
     case SystemState::WIFI_CONFIG_PORTAL: enterWifiConfigPortal(); break;
@@ -301,6 +322,19 @@ void AppStateManager::applyRideFilter() {
   _rideCount = writeIdx;
 }
 
+// Stamp each freshly fetched ride with its trend vs. the previous refresh
+// and its favorite flag. Runs after applyRideFilter(), before sorting —
+// TrendStore keys by ride id, so ordering doesn't matter.
+void AppStateManager::annotateRides() {
+  for (int i = 0; i < _rideCount; i++) {
+    RideInfo& r = _rides[i];
+    int delta = _trends.updateAndGetDelta(r.id, r.isOpen ? r.waitTime : -1);
+    r.trend      = (delta > 0) ? 1 : (delta < 0) ? -1 : 0;
+    r.trendDelta = (int16_t)delta;
+    r.favorite   = _cfg.isRideFavorite(_currentParkId, r.id);
+  }
+}
+
 // Full load of the current park: sync its timezone, fetch rides, and paint
 // the appropriate screen from scratch.
 void AppStateManager::loadParkData() {
@@ -308,6 +342,8 @@ void AppStateManager::loadParkData() {
 
   if (_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) {
     applyRideFilter();
+    annotateRides();
+    applyRideDisplayOptions();
     _display.setRideCount(_rideCount);
     _display.setDataFreshness(0);
     _showingClosedPark = false;
@@ -317,6 +353,7 @@ void AppStateManager::loadParkData() {
       _display.drawParkName(_currentParkName, true);
       _currentRideIndex = 0;
       _display.displayRide(_rides[_currentRideIndex], _currentRideIndex);
+      updateLed();
     } else {
       _parkLoadFailures++;
       _display.showNoData(NoDataReason::NO_RIDES);
@@ -401,4 +438,141 @@ void AppStateManager::resetCycleTimers() {
 void AppStateManager::rememberRideNames() {
   for (int i = 0; i < MAX_RIDES; i++)
     _lastRideNames[i] = (i < _rideCount) ? _rides[i].name : String();
+}
+
+// Filter + sort the ride list per the user's global display options
+// (skip closed, min wait, favorites first, sort by wait).
+void AppStateManager::applyRideDisplayOptions() {
+  const RuntimeConfig& cfg = _cfg.getConfig();
+  RideDisplayOptions opt;
+  opt.sortMode       = cfg.sortMode;
+  opt.favoritesFirst = cfg.favoritesFirst;
+  opt.skipClosed     = cfg.skipClosedRides;
+  opt.minWaitMinutes = cfg.minWaitMinutes;
+  applyDisplayOptions(_rides, _rideCount, opt);
+}
+
+// Move to the next ride (wrapping into the next park at the end of the
+// list). Shared by the rotate timer and the BOOT button's short press.
+void AppStateManager::advanceRide() {
+  _currentRideIndex++;
+  if (_currentRideIndex >= _rideCount) {
+    advanceToNextPark();
+  } else {
+    _display.drawParkName(_currentParkName, false);
+    _display.updateRideIfChanged(_rides[_currentRideIndex], _currentRideIndex);
+    updateLed();
+  }
+  _lastRotate = millis();
+}
+
+void AppStateManager::onButtonEvent(ButtonEvent ev) {
+  if (ev == ButtonEvent::None) return;
+
+  // Factory-reset hold sequence — works in any state that reaches loop()
+  // (the blocking captive portal never polls the button).
+  switch (ev) {
+    case ButtonEvent::HoldWarning: {
+      _resetWarningActive = true;
+      // Make sure the warning is actually visible: quiet hours may have the
+      // backlight at (or near) zero right now.
+      uint8_t brt = _cfg.getConfig().brightness;
+      if (brt < 30) brt = 30;
+      LCD_SetBacklight(brt);
+      _lastAppliedBrightness = brt;
+      _led.showLevel(WaitLevel::Red, brt);
+      _display.showFactoryResetWarning();
+      return;
+    }
+    case ButtonEvent::HoldCancel:
+      _resetWarningActive = false;
+      applyBrightness(true);
+      repaintAfterResetWarning();
+      resetCycleTimers();   // don't let a stale rotate timer fire instantly
+      return;
+    case ButtonEvent::HoldReset:
+      _display.showFactoryResetting();
+      delay(600);   // long enough to read before the panel goes dark
+      _cfg.factoryReset();
+      ESP.restart();
+      return;
+    default:
+      break;
+  }
+
+  if (_state != SystemState::WAIT_TIME_CYCLE) return;
+  if (ev == ButtonEvent::Short) {
+    if (_rideCount > 0 && !_showingClosedPark) advanceRide();
+  } else if (ev == ButtonEvent::Long) {
+    advanceToNextPark();
+  }
+}
+
+// Put back whatever the factory-reset warning replaced.
+void AppStateManager::repaintAfterResetWarning() {
+  switch (_state) {
+    case SystemState::WAIT_TIME_CYCLE:
+      if (_rideCount > 0 && allRidesClosed()) {
+        _display.showClosedPark(_currentParkName);
+      } else if (_rideCount > 0) {
+        _display.drawBackground();
+        _display.drawParkName(_currentParkName, true);
+        _display.displayRide(_rides[_currentRideIndex], _currentRideIndex);
+      } else {
+        _display.showNoData(NoDataReason::FETCH_FAILED);
+      }
+      updateLed();
+      break;
+    case SystemState::NO_PARKS_CONFIGURED:
+      _display.showNoData(NoDataReason::NO_PARKS);
+      break;
+    case SystemState::RECONNECTING:
+      _display.showNoData(NoDataReason::WIFI_LOST);
+      break;
+    case SystemState::STARTUP_INFO:
+      _startupScreenShown = false;   // tickStartupInfo repaints it
+      break;
+    default:
+      break;   // WIFI_CONNECTING repaints itself every 500 ms
+  }
+}
+
+// ------------------------------------------------------------------
+// Brightness / quiet hours / status LED
+// ------------------------------------------------------------------
+
+uint8_t AppStateManager::effectiveBrightness() const {
+  const RuntimeConfig& cfg = _cfg.getConfig();
+  if (cfg.quietHoursEnabled) {
+    int nowMin;
+    // Fail bright: before NTP sync we can't know the local time, so never
+    // dim based on a guess.
+    if (getLocalMinutesOfDay(nowMin) &&
+        inQuietWindow(nowMin, cfg.quietStartMin, cfg.quietEndMin))
+      return cfg.quietBrightness;
+  }
+  return cfg.brightness;
+}
+
+void AppStateManager::applyBrightness(bool force) {
+  uint8_t target = effectiveBrightness();
+  if (!force && target == _lastAppliedBrightness) return;
+  _lastAppliedBrightness = target;
+  LCD_SetBacklight(target);
+  updateLed();   // the LED brightness tracks the backlight
+}
+
+// Reflect the currently shown ride (or closed-park state) on the RGB LED.
+// Outside the wait-time cycle the LED stays dark (see transitionTo).
+void AppStateManager::updateLed() {
+  if (_state != SystemState::WAIT_TIME_CYCLE || _rideCount <= 0) {
+    _led.off();
+    return;
+  }
+  WaitLevel level = _showingClosedPark || allRidesClosed()
+      ? WaitLevel::Closed
+      : pickWaitLevel(_rides[_currentRideIndex].waitTime,
+                      _rides[_currentRideIndex].isOpen);
+  _led.showLevel(level, _lastAppliedBrightness == 255 ? _cfg.getConfig().brightness
+                                                      : _lastAppliedBrightness);
 }

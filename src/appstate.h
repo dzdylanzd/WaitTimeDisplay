@@ -9,6 +9,9 @@
 #include "display.h"
 #include "configmanager.h"
 #include "cfgserver.h"
+#include "trendstore.h"
+#include "statusled.h"
+#include "button.h"
 
 enum class SystemState {
   BOOT,
@@ -24,10 +27,13 @@ class AppStateManager {
 public:
   AppStateManager(WiFiManager& wifi, QueueApi& api,
                   ConfigManager& cfg, DisplayController& display,
-                  ConfigWebServer& webServer);
+                  ConfigWebServer& webServer, StatusLed& led);
 
   void begin();
   void update();
+
+  // BOOT button: Short = next ride, Long = next park (WAIT_TIME_CYCLE only)
+  void onButtonEvent(ButtonEvent ev);
 
   SystemState getState() const { return _state; }
 
@@ -43,8 +49,11 @@ private:
 
   bool allRidesClosed() const;
   void applyRideFilter();
+  void annotateRides();
+  void applyRideDisplayOptions();
   void loadParkData();
   void refreshRideData();
+  void advanceRide();
   void advanceToNextPark();
   void reloadRuntimeConfig();
   void restartCycle();
@@ -52,12 +61,17 @@ private:
   void syncParkTimezone(bool force = false);
   void resetCycleTimers();
   void rememberRideNames();
+  void repaintAfterResetWarning();
+  void applyBrightness(bool force = false);
+  uint8_t effectiveBrightness() const;
+  void updateLed();
 
   WiFiManager&       _wifi;
   QueueApi&          _api;
   ConfigManager&     _cfg;
   DisplayController& _display;
   ConfigWebServer&   _webServer;
+  StatusLed&         _led;
 
   SystemState   _state = SystemState::BOOT;
   unsigned long _stateEnterTime = 0;
@@ -85,6 +99,11 @@ private:
   bool         _startupScreenShown = false;
   bool         _showingClosedPark  = false;
   unsigned long _closedParkStart   = 0;
+
+  TrendStore    _trends;
+  uint8_t       _lastAppliedBrightness = 255;   // 255 = "not applied yet"
+  unsigned long _lastBrightnessCheck   = 0;
+  bool          _resetWarningActive    = false; // BOOT held ≥10 s, screen frozen
 
   int           _wifiFailCount     = 0;
   unsigned long _lastWiFiTry       = 0;

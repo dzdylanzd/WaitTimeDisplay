@@ -155,11 +155,16 @@ String QueueApi::getParkTimezone(int parkId) {
   return "UTC";
 }
 
-void QueueApi::appendRide(JsonObject ride, RideInfo rides[], int& rideCount) {
+void QueueApi::appendRide(JsonObject ride, const char* landName,
+                          RideInfo rides[], int& rideCount) {
   rides[rideCount].id       = ride["id"] | -1;
   rides[rideCount].name     = sanitizeToAscii(ride["name"] | "Unknown");
+  rides[rideCount].land     = sanitizeToAscii(landName);
   rides[rideCount].waitTime = ride["wait_time"] | -1;
   rides[rideCount].isOpen   = ride["is_open"] | false;
+  rides[rideCount].trend      = 0;
+  rides[rideCount].trendDelta = 0;
+  rides[rideCount].favorite   = false;
   rideCount++;
 }
 
@@ -172,6 +177,7 @@ bool QueueApi::fetchRideData(int parkId,
   // Only parse the fields we actually use. Without a filter, large parks
   // (e.g. Canada's Wonderland) overflow the document and fail with NoMemory.
   StaticJsonDocument<512> filter;
+  filter["lands"][0]["name"] = true;   // land name shown on the ride screen
   JsonObject fLand = filter["lands"][0]["rides"][0].to<JsonObject>();
   fLand["id"] = true; fLand["name"] = true;
   fLand["wait_time"] = true; fLand["is_open"] = true;
@@ -188,10 +194,11 @@ bool QueueApi::fetchRideData(int parkId,
   JsonArray lands = doc["lands"].as<JsonArray>();
 
   for (JsonObject land : lands) {
+    const char* landName = land["name"] | "";
     JsonArray ridesArray = land["rides"].as<JsonArray>();
     for (JsonObject ride : ridesArray) {
       if (rideCount >= maxRides) break;
-      appendRide(ride, rides, rideCount);
+      appendRide(ride, landName, rides, rideCount);
     }
   }
 
@@ -200,7 +207,7 @@ bool QueueApi::fetchRideData(int parkId,
   JsonArray topRides = doc["rides"].as<JsonArray>();
   for (JsonObject ride : topRides) {
     if (rideCount >= maxRides) break;
-    appendRide(ride, rides, rideCount);
+    appendRide(ride, "", rides, rideCount);
   }
 
   return rideCount > 0;
