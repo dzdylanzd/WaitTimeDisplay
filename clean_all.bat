@@ -1,0 +1,6 @@
+@echo off
+echo Cleaning simulator build...
+if exist "%~dp0sim\build"   rmdir /s /q "%~dp0sim\build"
+echo Cleaning tests build...
+if exist "%~dp0tests\build" rmdir /s /q "%~dp0tests\build"
+echo All build artifacts removed.

@@ -1,0 +1,39 @@
+#ifndef QUEUEAPI_H
+#define QUEUEAPI_H
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
+
+struct RideInfo {
+  int    id = -1;
+  String name;
+  int    waitTime = -1;
+  bool   isOpen = false;
+};
+
+class QueueApi {
+public:
+  QueueApi();
+
+  String getParkTimezone(int parkId);
+
+  bool fetchRideData(int parkId,
+                     RideInfo rides[], int& rideCount, int maxRides);
+
+  bool fetchAvailableParks(std::vector<int>& outIds,
+                           std::vector<String>& outNames,
+                           std::vector<String>& outGroups);
+
+private:
+  struct TZCache {
+    int    parkId = -1;
+    String tz;
+  };
+  static constexpr int TZ_CACHE_SIZE = 20;
+  TZCache _tzCache[TZ_CACHE_SIZE];
+  int     _tzCacheCount = 0;
+
+  bool httpGetJson(const String& url, DynamicJsonDocument& doc);
+};
+
+#endif // QUEUEAPI_H
