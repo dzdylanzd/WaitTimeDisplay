@@ -24,7 +24,7 @@ cycles through live ride wait times for the parks you care about, powered by
 - **Themed-land names** — each ride shows its land ("Frontierland", "Tomorrowland", ...)
 - **Trend arrows** — a red ▲ or green ▼ with the change in minutes when a ride's wait moved since the last refresh
 - **Favorites & sorting** — star rides in the web UI to show them first, sort by longest wait, skip closed rides, or hide short waits
-- **Brightness & quiet hours** — dim or switch off the screen on a nightly schedule (follows the displayed park's clock)
+- **Brightness & quiet hours** — dim or switch off the screen on a nightly schedule, in *your* timezone (or the park's, if you prefer)
 - **Flippable screen** — rotate the display 180° in the web UI when the device is mounted upside-down
 - **Status LED** — the onboard RGB LED glows in the current wait colour (can be turned off in the web UI)
 - **BOOT-button controls** — tap for next ride, hold for next park, hold 20 s for an on-device factory reset (with an "are you sure?" warning at 10 s)

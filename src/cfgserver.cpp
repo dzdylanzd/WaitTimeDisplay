@@ -203,7 +203,7 @@ R"rawliteral(
 <div class="container">
   <div class="section">
     <h2><span class="ico">&#128161;</span> Display</h2>
-    <p class="hint">Screen &amp; LED brightness, plus optional quiet hours when the display dims or switches off. Quiet hours follow the clock shown on the device (the current park's timezone).</p>
+    <p class="hint">Screen &amp; LED brightness, plus optional quiet hours when the display dims or switches off. Pick your own timezone below so quiet hours follow the clock on your wall &mdash; not the park's.</p>
     <div class="grid">
       <div class="field"><label>Brightness &mdash; <span id="brtVal">100</span>%</label>
         <input type="range" id="brt" min="5" max="100" value="100" oninput="$('brtVal').textContent=this.value"></div>
@@ -217,6 +217,8 @@ R"rawliteral(
       <div class="field"><label>Quiet end</label><input type="time" id="qt_end" value="07:00"></div>
       <div class="field"><label>Quiet brightness &mdash; <span id="qtBrtVal">0</span>% (0 = off)</label>
         <input type="range" id="qt_brt" min="0" max="100" value="0" oninput="$('qtBrtVal').textContent=this.value"></div>
+      <div class="field"><label>Quiet-hours timezone</label>
+        <select id="dev_tz" class="fieldsel"><option value="">Same as displayed park</option></select></div>
     </div>
   </div>
   <div class="section">
@@ -267,7 +269,17 @@ async function factoryReset(btn){
 let allParks=[];let allRides=[];let currentParkId=0;let rideFilterCache={};let favCache={};
 const $=id=>document.getElementById(id);
 
+// Zones the firmware can map to POSIX rules — keep in sync with the
+// TZ_TABLE in src/tzhelper.cpp.
+const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
+
+function populateTzSelector(){const sel=$('dev_tz');
+  let browserTz='';try{browserTz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
+  for(const tz of TZ_LIST){const o=document.createElement('option');o.value=tz;
+    o.textContent=tz.replace('_',' ')+(tz===browserTz?' (your timezone)':'');sel.appendChild(o);}}
+
 window.addEventListener('DOMContentLoaded',async()=>{
+  populateTzSelector();
   try{const res=await fetch('/api/config');const cfg=await res.json();
     $('api_int').value=cfg.apiRefreshInterval;
     $('rot_int').value=cfg.rotateInterval;
@@ -280,6 +292,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(typeof cfg.quietBrightness==='number'){$('qt_brt').value=cfg.quietBrightness;$('qtBrtVal').textContent=cfg.quietBrightness;}
     if(typeof cfg.ledEnabled==='boolean')$('led_en').checked=cfg.ledEnabled;
     if(typeof cfg.flipScreen==='boolean')$('flip_scr').checked=cfg.flipScreen;
+    if(typeof cfg.deviceTimezone==='string')$('dev_tz').value=cfg.deviceTimezone;
     if(cfg.rideOptions){$('sortMode').value=cfg.rideOptions.sortMode||0;$('favFirst').checked=!!cfg.rideOptions.favoritesFirst;$('skipClosed').checked=!!cfg.rideOptions.skipClosed;$('minWait').value=cfg.rideOptions.minWait||0;}
     if(cfg.rideFavorites)favCache=cfg.rideFavorites;
     if(cfg.enabledParks&&cfg.enabledParks.length){
@@ -384,7 +397,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
   const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
-    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
@@ -427,6 +440,7 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
     if(typeof cfg.quietBrightness==='number')body.quietBrightness=cfg.quietBrightness;}
   if(typeof cfg.ledEnabled==='boolean')body.ledEnabled=cfg.ledEnabled;
   if(typeof cfg.flipScreen==='boolean')body.flipScreen=cfg.flipScreen;
+  if(typeof cfg.deviceTimezone==='string')body.deviceTimezone=cfg.deviceTimezone;
   if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r=await res.json();
@@ -611,6 +625,7 @@ void ConfigWebServer::handleApiConfig() {
   doc["quietBrightness"] = cfg.quietBrightness;
   doc["ledEnabled"]      = cfg.ledEnabled;
   doc["flipScreen"]      = cfg.flipScreen;
+  doc["deviceTimezone"]  = cfg.deviceTimezone;
 
   JsonObject ro = doc.createNestedObject("rideOptions");
   ro["sortMode"]       = cfg.sortMode;
@@ -712,8 +727,15 @@ void ConfigWebServer::handleSaveConfig() {
                                                : cur.ledEnabled;
     bool flip  = doc.containsKey("flipScreen") ? (bool)doc["flipScreen"]
                                                : cur.flipScreen;
+    String devTz = cur.deviceTimezone;
+    if (doc.containsKey("deviceTimezone")) {
+      const char* tz = doc["deviceTimezone"].as<const char*>();
+      devTz = tz ? tz : "";
+      if (devTz.length() > 40) devTz = cur.deviceTimezone;   // sanity cap
+    }
     _cfgMgr.saveDisplaySettings((uint8_t)brt, qtEn, (uint16_t)qtSta,
-                                (uint16_t)qtEnd, (uint8_t)qtBrt, ledEn, flip);
+                                (uint16_t)qtEnd, (uint8_t)qtBrt, ledEn, flip,
+                                devTz);
 
     JsonObject ro = doc["rideOptions"].as<JsonObject>();
     if (!ro.isNull()) {

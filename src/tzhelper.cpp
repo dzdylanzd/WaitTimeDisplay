@@ -116,3 +116,30 @@ bool getLocalMinutesOfDay(int& outMinutes) {
   outMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
   return true;
 }
+
+// Convert the current UTC epoch into another zone by swapping the TZ env var
+// around a localtime_r call. System time itself is zone-less, so this doesn't
+// disturb NTP or the displayed park clock; everything runs on the loop() task,
+// so nothing can observe the temporary TZ.
+bool getMinutesOfDayInTz(const String& ianaTz, int& outMinutes) {
+  const char* posix = lookupPosixTZ(ianaTz);
+  if (!posix) return false;
+
+  time_t now = time(nullptr);
+  if (now < 1600000000) return false;   // clock not NTP-synced yet (< 2020)
+
+  const char* oldTz = getenv("TZ");
+  String saved = oldTz ? oldTz : "";
+
+  setenv("TZ", posix, 1);
+  tzset();
+  struct tm timeinfo;
+  localtime_r(&now, &timeinfo);
+
+  if (saved.length() > 0) setenv("TZ", saved.c_str(), 1);
+  else                    unsetenv("TZ");
+  tzset();
+
+  outMinutes = timeinfo.tm_hour * 60 + timeinfo.tm_min;
+  return true;
+}

@@ -34,6 +34,8 @@ struct RuntimeConfig {
   uint8_t  quietBrightness   = 0;       // 0 = backlight off during quiet hours
   bool     ledEnabled        = true;    // onboard RGB wait-colour LED
   bool     flipScreen        = false;   // rotate the display 180°
+  String   deviceTimezone;              // IANA zone for quiet hours;
+                                        // "" = follow the displayed park
 
   // ---- Ride display options (global) ----
   uint8_t sortMode        = SORT_MODE_API_ORDER;
@@ -60,7 +62,7 @@ public:
   void saveDisplaySettings(uint8_t brightness, bool quietEnabled,
                            uint16_t quietStartMin, uint16_t quietEndMin,
                            uint8_t quietBrightness, bool ledEnabled,
-                           bool flipScreen);
+                           bool flipScreen, const String& deviceTimezone);
   void saveRideOptions(uint8_t sortMode, bool favoritesFirst,
                        bool skipClosedRides, uint8_t minWaitMinutes);
   void saveRideFavorites(const String& favoritesJson);

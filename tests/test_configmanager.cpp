@@ -125,7 +125,8 @@ TEST_CASE("saveTimings: values reflected in getConfig immediately") {
 
 TEST_CASE("saveDisplaySettings: values reflected in getConfig") {
     ConfigManager mgr;
-    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60 + 30, 10, false, true);
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60 + 30, 10, false, true,
+                            "Europe/Amsterdam");
     const auto& cfg = mgr.getConfig();
     CHECK(cfg.brightness        == 40);
     CHECK(cfg.quietHoursEnabled == true);
@@ -134,6 +135,7 @@ TEST_CASE("saveDisplaySettings: values reflected in getConfig") {
     CHECK(cfg.quietBrightness   == 10);
     CHECK(cfg.ledEnabled        == false);
     CHECK(cfg.flipScreen        == true);
+    CHECK(cfg.deviceTimezone    == "Europe/Amsterdam");
 }
 
 // ── saveRideOptions ───────────────────────────────────────────────────────────
@@ -199,7 +201,8 @@ TEST_CASE("parseEnabledParks: JSON object instead of array returns false") {
 TEST_CASE("load: saved settings survive a reload from Preferences") {
     ConfigManager mgr;
     mgr.saveTimings(60000, 5000, 15000, 30000);
-    mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false, true);
+    mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false, true,
+                            "Europe/Amsterdam");
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 10);
     mgr.saveEnabledParks(R"([{"id":4,"name":"Paris"}])");
     mgr.saveRideFilters(R"({"4":[1,2]})");
@@ -217,6 +220,7 @@ TEST_CASE("load: saved settings survive a reload from Preferences") {
     CHECK(cfg.quietBrightness    == 25);
     CHECK(cfg.ledEnabled         == false);
     CHECK(cfg.flipScreen         == true);
+    CHECK(cfg.deviceTimezone     == "Europe/Amsterdam");
     CHECK(cfg.sortMode           == SORT_MODE_WAIT_DESC);
     CHECK(cfg.favoritesFirst     == false);
     CHECK(cfg.skipClosedRides    == true);
@@ -236,7 +240,8 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     mgr.saveTimings(120000, 15000, 25000, 45000);
     mgr.saveEnabledParks(R"([{"id":1,"name":"Park"}])");
     mgr.saveRideFilters(R"({"1":[10,20]})");
-    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10, false, true);
+    mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10, false, true,
+                            "Europe/Amsterdam");
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 15);
     mgr.saveRideFavorites(R"({"1":[10]})");
     REQUIRE(mgr.hasEnabledParks());
@@ -257,6 +262,7 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     CHECK(cfg.quietHoursEnabled == false);
     CHECK(cfg.ledEnabled        == true);
     CHECK(cfg.flipScreen        == false);
+    CHECK(cfg.deviceTimezone    == "");
     CHECK(cfg.sortMode          == SORT_MODE_API_ORDER);
     CHECK(cfg.favoritesFirst    == true);
     CHECK(cfg.skipClosedRides   == false);

@@ -19,6 +19,7 @@ void ConfigManager::load() {
   _config.quietBrightness   = (uint8_t)_prefs.getInt("qt_brt", 0);
   _config.ledEnabled        = _prefs.getBool("led_en", true);
   _config.flipScreen        = _prefs.getBool("flip_scr", false);
+  _config.deviceTimezone    = _prefs.getString("dev_tz", "");
 
   _config.sortMode          = (uint8_t)_prefs.getInt("sort_mode", SORT_MODE_API_ORDER);
   _config.favoritesFirst    = _prefs.getBool("fav_first", true);
@@ -70,7 +71,7 @@ void ConfigManager::saveRideFilters(const String& filtersJson) {
 void ConfigManager::saveDisplaySettings(uint8_t brightness, bool quietEnabled,
                                          uint16_t quietStartMin, uint16_t quietEndMin,
                                          uint8_t quietBrightness, bool ledEnabled,
-                                         bool flipScreen) {
+                                         bool flipScreen, const String& deviceTimezone) {
   _prefs.begin(NVS_NAMESPACE, false);
   _prefs.putInt("brt",       brightness);
   _prefs.putBool("qt_en",    quietEnabled);
@@ -79,6 +80,7 @@ void ConfigManager::saveDisplaySettings(uint8_t brightness, bool quietEnabled,
   _prefs.putInt("qt_brt",    quietBrightness);
   _prefs.putBool("led_en",   ledEnabled);
   _prefs.putBool("flip_scr", flipScreen);
+  _prefs.putString("dev_tz", deviceTimezone);
   _prefs.end();
   _config.brightness        = brightness;
   _config.quietHoursEnabled = quietEnabled;
@@ -87,6 +89,7 @@ void ConfigManager::saveDisplaySettings(uint8_t brightness, bool quietEnabled,
   _config.quietBrightness   = quietBrightness;
   _config.ledEnabled        = ledEnabled;
   _config.flipScreen        = flipScreen;
+  _config.deviceTimezone    = deviceTimezone;
 }
 
 void ConfigManager::saveRideOptions(uint8_t sortMode, bool favoritesFirst,

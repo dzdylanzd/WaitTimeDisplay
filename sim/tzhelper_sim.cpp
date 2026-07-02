@@ -20,3 +20,8 @@ bool getLocalMinutesOfDay(int& outMinutes) {
     outMinutes = tm_info->tm_hour * 60 + tm_info->tm_min;
     return true;
 }
+
+// Sim: the PC's clock IS the device-local time, whatever zone was picked.
+bool getMinutesOfDayInTz(const String&, int& outMinutes) {
+    return getLocalMinutesOfDay(outMinutes);
+}

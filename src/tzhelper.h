@@ -11,4 +11,9 @@ void   resetTimeCache();
 // sync — callers should then behave as if outside any quiet-hours window.
 bool   getLocalMinutesOfDay(int& outMinutes);
 
+// Same, but in a specific IANA timezone (e.g. the user's home zone) instead
+// of the currently applied park timezone. Returns false before NTP sync or
+// when the zone isn't in the mapping table.
+bool   getMinutesOfDayInTz(const String& ianaTz, int& outMinutes);
+
 #endif // TZHELPER_H

@@ -546,11 +546,15 @@ void AppStateManager::repaintAfterResetWarning() {
 uint8_t AppStateManager::effectiveBrightness() const {
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.quietHoursEnabled) {
+    // Quiet hours run on the DEVICE's home timezone when the user picked one;
+    // otherwise on the displayed park's clock (the pre-existing behaviour).
+    // Fail bright: before NTP sync (or with an unknown zone) we can't know
+    // the local time, so never dim based on a guess.
     int nowMin;
-    // Fail bright: before NTP sync we can't know the local time, so never
-    // dim based on a guess.
-    if (getLocalMinutesOfDay(nowMin) &&
-        inQuietWindow(nowMin, cfg.quietStartMin, cfg.quietEndMin))
+    bool haveTime = cfg.deviceTimezone.length() > 0
+        ? getMinutesOfDayInTz(cfg.deviceTimezone, nowMin)
+        : getLocalMinutesOfDay(nowMin);
+    if (haveTime && inQuietWindow(nowMin, cfg.quietStartMin, cfg.quietEndMin))
       return cfg.quietBrightness;
   }
   return cfg.brightness;

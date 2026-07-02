@@ -143,7 +143,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### NVS namespaces
 - `"queuewatch"` — `ConfigManager` (parks, ride filters/favorites, timings, display + ride-display options) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
-- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr` (brightness + quiet hours + status-LED on/off + 180° screen flip), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
+- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr`/`dev_tz` (brightness + quiet hours + quiet-hours timezone + status-LED on/off + 180° screen flip), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
 
 ### Data flow
 1. `QueueApi::fetchRideData()` populates a fixed `RideInfo[MAX_RIDES]` array (no heap allocation for ride data). Each ride carries its `land` name (empty for lands-less parks like Tokyo).
@@ -152,7 +152,8 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 4. `AppStateManager::refreshRideData()` detects whether only wait-times changed vs. rides added/removed/renamed and repaints only the wait panel or the whole screen accordingly. (Wait-desc sorting can reorder on refresh — detected as a structure change → full repaint.)
 
 ### Brightness / quiet hours / LED / button
-- `AppStateManager::applyBrightness()` runs every ~10 s in ALL states: quiet-hours window (park-local clock, `inQuietWindow`) → `quietBrightness`, else `brightness`; calls `LCD_SetBacklight()` only on change. Fails bright before NTP sync.
+- `AppStateManager::applyBrightness()` runs every ~10 s in ALL states: quiet-hours window (`inQuietWindow`) → `quietBrightness`, else `brightness`; calls `LCD_SetBacklight()` only on change. Fails bright before NTP sync.
+- Quiet hours use the user's `deviceTimezone` (NVS `dev_tz`, IANA name picked from a dropdown in the web UI — the JS `TZ_LIST` must stay in sync with `TZ_TABLE` in tzhelper.cpp) via `getMinutesOfDayInTz()`, which swaps the TZ env var around a `localtime_r` call without disturbing the displayed park clock. Empty `deviceTimezone` = follow the displayed park (legacy behaviour).
 - The WS2812 mirrors `pickWaitLevel()` of the currently shown ride (teal when the closed-park screen shows); off outside `WAIT_TIME_CYCLE` and when quiet-hours brightness is 0.
 - BOOT button Short/Long only act in `WAIT_TIME_CYCLE`: Short → `advanceRide()`, Long → `advanceToNextPark()`. Sim: N / P keys.
 - **Factory reset by button**: holding BOOT 10 s fires `HoldWarning` → warning screen ("Are you sure...?"), red LED, backlight forced ≥30%, and `AppStateManager::update()` freezes (`_resetWarningActive`). Releasing fires `HoldCancel` → screen restored per state. Holding to 20 s fires `HoldReset` → `showFactoryResetting()` + `ConfigManager::factoryReset()` + `ESP.restart()`. Works in any state except the blocking captive portal (which never polls the button). Sim: W = warning, X = cancel.
