@@ -6,6 +6,7 @@
 .vscode/launch.json
 .vscode/ipch
 compile_commands.json
+build/
 sim/build/
 tests/build/
 pio_upload*.log
