@@ -179,6 +179,15 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 )rawliteral"
 R"rawliteral(
 <div class="container">
+  <div class="section">
+    <h2><span class="ico">&#128190;</span> Backup &amp; Restore</h2>
+    <p class="hint">Export the current parks, ride filters and timing settings to a file, or restore a previously exported configuration.</p>
+    <div class="toolbar" style="margin-bottom:0">
+      <button type="button" class="btn btn-ghost" onclick="exportConfig(this)">&#8681; Export config</button>
+      <button type="button" class="btn btn-ghost" onclick="$('importFile').click()">&#8679; Import config</button>
+      <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importConfig(this)">
+    </div>
+  </div>
   <div class="section" style="border-color:#5a2440">
     <h2><span class="ico">&#9888;&#65039;</span> Danger zone</h2>
     <p class="hint">Factory reset erases the WiFi credentials, parks, ride filters and timing settings, then restarts the device into WiFi setup mode.</p>
@@ -307,6 +316,36 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
     else toast('Error: '+(result.error||'unknown'),'error');
   }catch(e){toast('Failed to save configuration','error');}
   btn.disabled=false;btn.innerHTML='&#10003; Save &amp; Restart Cycle';return false;}
+
+async function exportConfig(btn){btn.disabled=true;
+  try{const res=await fetch('/api/config');if(!res.ok)throw new Error('HTTP '+res.status);
+    const cfg=await res.json();
+    const blob=new Blob([JSON.stringify(cfg,null,2)],{type:'application/json'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    const d=new Date(),p=n=>String(n).padStart(2,'0');
+    a.download='queuewatch-config-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'.json';
+    a.click();URL.revokeObjectURL(a.href);
+    toast('Config exported','success');
+  }catch(e){toast('Export failed: '+e.message,'error');}
+  btn.disabled=false;}
+
+async function importConfig(input){const file=input.files[0];input.value='';if(!file)return;
+  let cfg;
+  try{cfg=JSON.parse(await file.text());}catch(e){toast('Not a valid JSON file','error');return;}
+  if(!cfg||typeof cfg!=='object'||!Array.isArray(cfg.enabledParks)||typeof cfg.apiRefreshInterval!=='number'){
+    toast('Not a QueueWatch config file','error');return;}
+  if(!confirm('Import "'+file.name+'"?\n\nThis replaces the parks, ride filters and timing settings on the device.'))return;
+  // Explicit null clears stale filters for parks kept from the old config.
+  const rideFilters={};const src=cfg.rideFilters||{};
+  for(const park of cfg.enabledParks)rideFilters[park.id]=src.hasOwnProperty(park.id)?src[park.id]:null;
+  const body={apiRefreshInterval:cfg.apiRefreshInterval,rotateInterval:cfg.rotateInterval,
+    closedParkDisplayTime:cfg.closedParkDisplayTime,timeUpdateInterval:cfg.timeUpdateInterval,
+    enabledParks:cfg.enabledParks.map(p=>({id:p.id,name:p.name})),rideFilters};
+  try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const r=await res.json();
+    if(r.success){toast('&#10003; Config imported! Reloading...','success');setTimeout(()=>location.reload(),1200);}
+    else toast('Import error: '+(r.error||'unknown'),'error');
+  }catch(e){toast('Import request failed','error');}}
 
 let toastTimer;
 function toast(text,type){const t=$('toast');t.className='toast '+(type||'info');t.innerHTML=text;
