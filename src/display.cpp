@@ -202,12 +202,15 @@ static constexpr int TREND_H    = 24;
 // Widget helpers
 // ---------------------------------------------------------------------------
 
-// Header clock text: the displayed park's local time. (No WiFi glyph — the
-// main screen is only ever shown while connected, so it carried no signal;
-// the small country label above the clock says where this time is from.)
-static String clockText() {
-    return getLocalTimeString();
+static lv_obj_t* makeScreen() {
+    lv_obj_t* scr = lv_obj_create(nullptr);
+    lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_width(scr, 0, LV_PART_MAIN);
+    lv_obj_set_style_pad_all(scr, 0, LV_PART_MAIN);
+    lv_obj_clear_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
+    return scr;
 }
+
 static lv_obj_t* makePanel(lv_obj_t* parent, int x, int y, int w, int h,
                             lv_color_t bg, int radius = 0) {
     lv_obj_t* obj = lv_obj_create(parent);
@@ -261,12 +264,8 @@ void DisplayController::begin() {
 // _buildMainScreen
 // ---------------------------------------------------------------------------
 void DisplayController::_buildMainScreen() {
-    _scrMain = lv_obj_create(nullptr);
+    _scrMain = makeScreen();
     lv_obj_set_style_bg_color(_scrMain, C_BLACK, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_scrMain, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_scrMain, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_scrMain, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(_scrMain, LV_OBJ_FLAG_SCROLLABLE);
 
     // ── Header: solid palette colour (flat — no gradient banding on RGB565) ──
     lv_obj_t* hdr = makePanel(_scrMain, 0, 0, SCR_W, HDR_H, C_HDR_L);
@@ -353,13 +352,9 @@ void DisplayController::_buildMainScreen() {
 // _buildStatusScreen
 // ---------------------------------------------------------------------------
 void DisplayController::_buildStatusScreen() {
-    _scrStatus = lv_obj_create(nullptr);
+    _scrStatus = makeScreen();
     // Solid palette colour (flat — avoids RGB565 gradient banding)
     lv_obj_set_style_bg_color(_scrStatus, C_STAT_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_scrStatus, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_scrStatus, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_scrStatus, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(_scrStatus, LV_OBJ_FLAG_SCROLLABLE);
 
     _lblStTitle = makeLabel(_scrStatus, 0, 20, SCR_W, 28,
                             &lv_font_montserrat_20, C_WHITE,
@@ -393,12 +388,8 @@ void DisplayController::_buildStatusScreen() {
 //  Bottom bar    : SSID / password fallback for manual entry
 // ---------------------------------------------------------------------------
 void DisplayController::_buildPortalScreen() {
-    _scrPortal = lv_obj_create(nullptr);
+    _scrPortal = makeScreen();
     lv_obj_set_style_bg_color(_scrPortal, C_STAT_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_opa(_scrPortal, LV_OPA_COVER, LV_PART_MAIN);
-    lv_obj_set_style_border_width(_scrPortal, 0, LV_PART_MAIN);
-    lv_obj_set_style_pad_all(_scrPortal, 0, LV_PART_MAIN);
-    lv_obj_clear_flag(_scrPortal, LV_OBJ_FLAG_SCROLLABLE);
 
     // Left column — instructions
     lv_obj_t* title = makeLabel(_scrPortal, 12, 14, 168, 26,
@@ -522,12 +513,12 @@ void DisplayController::drawBackground() {
 
 void DisplayController::drawParkName(const String& parkName, bool force) {
     if (!force && parkName == _lastParkName) {
-        lv_label_set_text(_lblTime, clockText().c_str());
+        lv_label_set_text(_lblTime, getLocalTimeString().c_str());
         return;
     }
     _lastParkName = parkName;
     lv_label_set_text(_lblPark, parkName.c_str());
-    lv_label_set_text(_lblTime, clockText().c_str());
+    lv_label_set_text(_lblTime, getLocalTimeString().c_str());
 }
 
 void DisplayController::setRideCount(int count) {
@@ -605,40 +596,56 @@ void DisplayController::setDataFreshness(int ageMinutes) {
 // text, wait themes) pick up the new palette on their next draw; the wait
 // themes are palette-independent by design.
 // ---------------------------------------------------------------------------
+using PaletteColorFn = void (*)(lv_obj_t*, lv_color_t, lv_style_selector_t);
+
+struct PaletteBinding {
+    lv_obj_t**      widget;
+    lv_color_t      UiPalette::* field;
+    PaletteColorFn  setter;
+};
+
 void DisplayController::applyPalette(uint8_t paletteId) {
     if (paletteId >= UI_PALETTE_COUNT) paletteId = 0;
     PAL = &PALETTES[paletteId];
 
-    // Main screen
-    lv_obj_set_style_bg_color(_pnlHdr, C_HDR_L, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblPark,    C_PARK_TXT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblCountry, C_IDX_TXT,  LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblTime,    C_TIME_TXT, LV_PART_MAIN);
-    setDataFreshness(_lastAgeMin);
-    lv_obj_set_style_bg_color(_barProgress, C_SEP, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_pnlRide, C_RIDE_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblRideName, C_RIDE_TXT, LV_PART_MAIN);
+    // Every palette-coloured widget that isn't special-cased below (the ride
+    // index has a favorite-conditional colour; the freshness separator is
+    // re-derived via setDataFreshness). Adding a new plain palette-coloured
+    // widget only needs a row here, not a hand-written set_style_* call.
+    static const PaletteBinding kBindings[] = {
+        { &_pnlHdr,        &UiPalette::hdrBg,    lv_obj_set_style_bg_color   },
+        { &_lblPark,       &UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        { &_lblCountry,    &UiPalette::idxTxt,   lv_obj_set_style_text_color },
+        { &_lblTime,       &UiPalette::timeTxt,  lv_obj_set_style_text_color },
+        { &_barProgress,   &UiPalette::track,    lv_obj_set_style_bg_color   },
+        { &_pnlRide,       &UiPalette::rideBg,   lv_obj_set_style_bg_color   },
+        { &_lblRideName,   &UiPalette::rideTxt,  lv_obj_set_style_text_color },
+        { &_lblLand,       &UiPalette::idxTxt,   lv_obj_set_style_text_color },
+        { &_lblWaitSub,    &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
+        // Status screen (title/sub colours are per-message; the next show*()
+        // call re-applies them from the new palette)
+        { &_scrStatus,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
+        { &_sepStatus,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &_lblStBody,     &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
+        { &_objStBottom,   &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
+        { &_lineStBottom,  &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &_lblStExtra,    &UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        // Portal screen
+        { &_scrPortal,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
+        { &_lblPortalTitle,&UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        { &_sepPortal,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &_lblPortalBody, &UiPalette::rideTxt,  lv_obj_set_style_text_color },
+        { &_pnlPortalBar,  &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
+        { &_linePortalBar, &UiPalette::accent,   lv_obj_set_style_bg_color   },
+    };
+    for (const PaletteBinding& b : kBindings) {
+        b.setter(*b.widget, PAL->*(b.field), LV_PART_MAIN);
+    }
+
+    // Special cases that aren't a plain palette-field lookup.
     lv_obj_set_style_text_color(_lblRideIdx,
         _lastFavorite ? C_PARK_TXT : C_IDX_TXT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblLand, C_IDX_TXT, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblWaitSub, C_BODY_TXT, LV_PART_MAIN);
-
-    // Status screen (title/sub colours are per-message; the next show*()
-    // call re-applies them from the new palette)
-    lv_obj_set_style_bg_color(_scrStatus, C_STAT_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_sepStatus, C_GOLD, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblStBody, C_BODY_TXT, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_objStBottom, C_PANEL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_lineStBottom, C_GOLD, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblStExtra, C_PARK_TXT, LV_PART_MAIN);
-
-    // Portal screen
-    lv_obj_set_style_bg_color(_scrPortal, C_STAT_BG, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblPortalTitle, C_PARK_TXT, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_sepPortal, C_GOLD, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblPortalBody, C_RIDE_TXT, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_pnlPortalBar, C_PANEL_BG, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_linePortalBar, C_GOLD, LV_PART_MAIN);
+    setDataFreshness(_lastAgeMin);
 
     lv_obj_invalidate(lv_scr_act());
 }
@@ -742,19 +749,15 @@ void DisplayController::showClosedPark(const String& parkName) {
     drawParkName(parkName, true);
     _setRideName("All rides closed");
     _setLand("");
-    lv_label_set_text(_lblTrend, "");
     lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
     lv_label_set_text(_lblRideIdx, "");
 
-    // Teal theme for closed park
-    lv_obj_set_style_bg_color(_objRideAccent, T_TEAL.accent, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_barProgress, T_TEAL.accent, LV_PART_INDICATOR);
-    lv_obj_set_style_bg_color(_objWaitPanel, T_TEAL.bgBot, LV_PART_MAIN);
-    lv_obj_set_style_bg_color(_objWaitBorder, T_TEAL.accent, LV_PART_MAIN);
-    lv_obj_set_style_text_color(_lblWaitNum, T_TEAL.accent, LV_PART_MAIN);
-    lv_obj_set_style_text_font(_lblWaitNum, &lv_font_montserrat_48, LV_PART_MAIN);
-    lv_label_set_text(_lblWaitNum, "CLOSED");
-    lv_label_set_text(_lblWaitSub, "PARK IS CLOSED TODAY");
+    // pickTheme() (inside _applyWaitWidgets) forces the teal Closed theme
+    // whenever isOpen is false, regardless of waitTime — a default
+    // RideInfo (isOpen=false) reuses the same theme/number/trend logic a
+    // single closed ride uses, instead of re-deriving it here.
+    _applyWaitWidgets(RideInfo());
+    lv_label_set_text(_lblWaitSub, "PARK IS CLOSED TODAY");  // more specific than a single ride's "NOT OPERATING"
 }
 
 void DisplayController::showCaptivePortalInfo(const char* apName, const char* apPass) {

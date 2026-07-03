@@ -654,7 +654,10 @@ bool ConfigWebServer::isConfigUpdated()    { return _configUpdated; }
 void ConfigWebServer::clearConfigFlag()    { _configUpdated = false; }
 
 void ConfigWebServer::handleRoot() {
-  _server.send(200, "text/html", buildConfigPage());
+  // Streamed straight from flash (PROGMEM) instead of copying the ~40 KB
+  // page into a heap String first — avoids a large transient allocation
+  // right when the HTTP stack also needs buffers.
+  _server.send_P(200, "text/html", CONFIG_HTML);
 }
 
 void ConfigWebServer::handleApiParks() {
@@ -912,9 +915,3 @@ void ConfigWebServer::handleNotFound() {
   _server.send(404, "text/plain", "Not found");
 }
 
-String ConfigWebServer::buildConfigPage() {
-  String html;
-  html.reserve(40000);
-  for (size_t i = 0; CONFIG_HTML[i] != '\0'; i++) html += (char)pgm_read_byte(&CONFIG_HTML[i]);
-  return html;
-}

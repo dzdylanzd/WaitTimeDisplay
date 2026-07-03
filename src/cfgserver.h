@@ -32,7 +32,6 @@ private:
   void handleSaveConfig();
   void handleFactoryReset();
   void handleNotFound();
-  String buildConfigPage();
 };
 
 #endif // CFGSERVER_H

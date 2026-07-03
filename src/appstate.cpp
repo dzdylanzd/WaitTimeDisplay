@@ -9,6 +9,22 @@
 // How often the quiet-hours window / brightness setting is re-evaluated.
 static constexpr unsigned long BRIGHTNESS_CHECK_INTERVAL = 10000UL;
 
+// Reconnect attempt gives up (and counts as a failure) after this long.
+static constexpr unsigned long WIFI_ATTEMPT_TIMEOUT_MS = 15000UL;
+// Consecutive reconnect failures before showing the WIFI_TROUBLE screen.
+static constexpr int WIFI_TROUBLE_FAIL_COUNT = 3;
+// Consecutive park load failures (fetch error or zero usable rides) before
+// moving on to the next configured park instead of retrying the same one.
+static constexpr int MAX_PARK_LOAD_FAILURES = 2;
+// "Connecting..." dot animation cadence and frame count (0..3, then wraps).
+static constexpr unsigned long CONNECT_DOT_ANIM_MS = 500UL;
+static constexpr int CONNECT_DOT_FRAME_MASK = 3;
+// Minimum backlight during the factory-reset warning, so it's readable even
+// if quiet hours currently has the backlight near zero.
+static constexpr uint8_t RESET_WARNING_MIN_BRIGHTNESS = 30;
+// How long showFactoryResetting() stays up before the actual wipe + restart.
+static constexpr unsigned long FACTORY_RESET_DISPLAY_MS = 600UL;
+
 AppStateManager::AppStateManager(WiFiManager& wifi, QueueApi& api,
                                   ConfigManager& cfg, DisplayController& display,
                                   ConfigWebServer& webServer, StatusLed& led)
@@ -93,10 +109,9 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
     // down or out of range, and the BOOT button (20 s hold) covers the case
     // where the credentials really are wrong. Tell the user what's going on
     // and keep retrying forever.
-    _wifiTrouble = true;
+    enterWifiTroubleScreen();
     _wifi.resetConnecting();
     _lastWiFiTry = now;
-    _display.showNoData(NoDataReason::WIFI_TROUBLE);
   }
 
   if (_wifiTrouble) {
@@ -105,9 +120,8 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
       _lastWiFiTry = now;
       _wifi.resetConnecting();
     }
-  } else if (now - _lastDotUpdate >= 500) {
-    // Animate connecting dots every 500 ms
-    _connectingDotCount = (_connectingDotCount + 1) & 3;
+  } else if (now - _lastDotUpdate >= CONNECT_DOT_ANIM_MS) {
+    _connectingDotCount = (_connectingDotCount + 1) & CONNECT_DOT_FRAME_MASK;
     _display.showConnectingScreen(_connectingDotCount);
     _lastDotUpdate = now;
   }
@@ -163,7 +177,7 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
       // A park that keeps failing (fetch error or zero usable rides) must not
       // stall the whole cycle: after two failed retries move on to the next
       // configured park instead of hammering the same one forever.
-      if (_parkLoadFailures >= 2 && cfg.enabledParkIds.size() > 1) {
+      if (_parkLoadFailures >= MAX_PARK_LOAD_FAILURES && cfg.enabledParkIds.size() > 1) {
         advanceToNextPark();
       } else {
         loadParkData();
@@ -224,13 +238,7 @@ void AppStateManager::refreshRideData() {
   int currentRideId = (prevCount > 0 && _currentRideIndex < prevCount)
                        ? prevId[_currentRideIndex] : -1;
 
-  if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) return;
-
-  applyRideFilter();
-  annotateRides();
-  applyRideDisplayOptions();
-  _display.setRideCount(_rideCount);
-  _display.setDataFreshness(0);
+  if (!fetchAndProcessRideData()) return;
 
   // Wait-desc sorting can reorder rides between refreshes, so the same index
   // may now point at a different ride — re-find the ride the user was
@@ -277,6 +285,11 @@ void AppStateManager::refreshRideData() {
 
 void AppStateManager::enterReconnecting() {
   _wifiTrouble = false;
+  // Stamp the attempt-timeout clock here (state entry) rather than lazily
+  // inside tickReconnecting: if connect() ever returned true on the very
+  // first reconnect tick without WL_CONNECTED, the lazy stamp would never
+  // happen and the 15 s timeout below could never fire.
+  _wifiBeginTime = millis();
   _display.showNoData(NoDataReason::WIFI_LOST);
 }
 
@@ -312,7 +325,7 @@ void AppStateManager::tickReconnecting(unsigned long now) {
     return;
   }
 
-  bool attemptTimedOut   = (_wifiBeginTime > 0 && (now - _wifiBeginTime >= 15000UL));
+  bool attemptTimedOut   = (_wifiBeginTime > 0 && (now - _wifiBeginTime >= WIFI_ATTEMPT_TIMEOUT_MS));
   bool terminalFailure   = (WiFi.status() == WL_CONNECT_FAILED ||
                             WiFi.status() == WL_NO_SSID_AVAIL);
   bool disconnectedAfter = (WiFi.status() == WL_DISCONNECTED && attemptTimedOut);
@@ -321,14 +334,21 @@ void AppStateManager::tickReconnecting(unsigned long now) {
     _wifiFailCount++;
     _wifi.resetConnecting();
     _wifiBeginTime = 0;
-    if (_wifiFailCount >= 3 && !_wifiTrouble) {
+    if (_wifiFailCount >= WIFI_TROUBLE_FAIL_COUNT && !_wifiTrouble) {
       // Repeated failures no longer open the config portal (the BOOT button
       // handles a real reconfiguration): explain how to recover on-screen
       // and keep retrying — the router may just be rebooting.
-      _wifiTrouble = true;
-      _display.showNoData(NoDataReason::WIFI_TROUBLE);
+      enterWifiTroubleScreen();
     }
   }
+}
+
+// Shared by WIFI_CONNECTING and RECONNECTING: both eventually give up
+// waiting and show the same "still trying" screen with the same recovery
+// hint (see the callers' comments for why neither falls back to the portal).
+void AppStateManager::enterWifiTroubleScreen() {
+  _wifiTrouble = true;
+  _display.showNoData(NoDataReason::WIFI_TROUBLE);
 }
 
 // ==================================================================
@@ -381,6 +401,20 @@ void AppStateManager::annotateRides() {
   }
 }
 
+// Fetch the current park's rides and run them through the shared
+// filter/annotate/sort pipeline, updating the display's ride-count and
+// freshness metadata. Shared by loadParkData() and refreshRideData() so the
+// two callers can't drift on what "process the fetched rides" means.
+bool AppStateManager::fetchAndProcessRideData() {
+  if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) return false;
+  applyRideFilter();
+  annotateRides();
+  applyRideDisplayOptions();
+  _display.setRideCount(_rideCount);
+  _display.setDataFreshness(0);
+  return true;
+}
+
 // Full load of the current park: sync its timezone, fetch rides, and paint
 // the appropriate screen from scratch.
 void AppStateManager::loadParkData() {
@@ -389,12 +423,7 @@ void AppStateManager::loadParkData() {
   // next to it says where that time is from (cached with the timezone).
   _display.setParkCountry(_api.getParkCountry(_currentParkId));
 
-  if (_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) {
-    applyRideFilter();
-    annotateRides();
-    applyRideDisplayOptions();
-    _display.setRideCount(_rideCount);
-    _display.setDataFreshness(0);
+  if (fetchAndProcessRideData()) {
     _showingClosedPark = false;
     if (_rideCount > 0) {
       _parkLoadFailures = 0;
@@ -526,7 +555,7 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
       // Make sure the warning is actually visible: quiet hours may have the
       // backlight at (or near) zero right now.
       uint8_t brt = _cfg.getConfig().brightness;
-      if (brt < 30) brt = 30;
+      if (brt < RESET_WARNING_MIN_BRIGHTNESS) brt = RESET_WARNING_MIN_BRIGHTNESS;
       LCD_SetBacklight(brt);
       _lastAppliedBrightness = brt;
       _brightnessApplied = true;
@@ -542,7 +571,7 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
       return;
     case ButtonEvent::HoldReset:
       _display.showFactoryResetting();
-      delay(600);   // long enough to read before the panel goes dark
+      delay(FACTORY_RESET_DISPLAY_MS);   // long enough to read before the panel goes dark
       _cfg.factoryReset();
       ESP.restart();
       return;

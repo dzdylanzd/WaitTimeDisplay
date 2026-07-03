@@ -87,6 +87,18 @@ public:
         }
     }
 
+    // PROGMEM is a no-op in the sim (see sim/Arduino.h), so content is just a
+    // normal null-terminated buffer here — matches the real ESP32 WebServer's
+    // send_P(code, contentType, PGM_P content, size_t contentLength = 0).
+    void send_P(int code, const char* contentType, const char* content,
+                size_t contentLength = 0) {
+        if (_curRes) {
+            size_t len = contentLength ? contentLength : strlen(content);
+            _curRes->status = code;
+            _curRes->set_content(content, len, contentType);
+        }
+    }
+
     String arg(const char* name) {
         if (!_curReq) return "";
         if (strcmp(name, "plain") == 0) return String(_curReq->body.c_str());

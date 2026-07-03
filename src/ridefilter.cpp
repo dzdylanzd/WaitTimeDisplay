@@ -2,10 +2,13 @@
 #include <algorithm>
 
 // Sort rank within the wait-desc mode: open rides by wait descending,
-// unknown-wait open rides after them, closed rides last.
+// unknown-wait open rides after them, closed rides last. The sentinels only
+// need to sort below any real wait time (which never reaches four digits).
+static constexpr int RANK_CLOSED  = -2000;
+static constexpr int RANK_UNKNOWN = -1000;
 static int waitRank(const RideInfo& r) {
-  if (!r.isOpen)        return -2000;
-  if (r.waitTime < 0)   return -1000;
+  if (!r.isOpen)        return RANK_CLOSED;
+  if (r.waitTime < 0)   return RANK_UNKNOWN;
   return r.waitTime;
 }
 

@@ -1,6 +1,10 @@
 #include "statusled.h"
 #include "config.h"
 
+// The WS2812 is far brighter than the LCD backlight at the same duty, so cap
+// it well below full scale and let brightnessPct scale up from there.
+static constexpr uint16_t LED_MAX_DUTY = 64;   // out of 255
+
 void StatusLed::setColors(const uint32_t colors[5]) {
   for (int i = 0; i < 5; i++) _colors[i] = colors[i];
   _isOff = true;   // defeat the showLevel() dedupe so the new colour paints
@@ -16,9 +20,7 @@ void StatusLed::showLevel(WaitLevel level, uint8_t brightnessPct) {
 
   uint32_t c = _colors[(int)level];
   uint8_t r = (c >> 16) & 0xFF, g = (c >> 8) & 0xFF, b = c & 0xFF;
-  // The WS2812 is far brighter than the LCD backlight at the same duty, so
-  // cap it at ~1/4 and scale with the display brightness from there.
-  uint16_t scale = (uint16_t)brightnessPct * 64 / 100;   // 0–64 of 255
+  uint16_t scale = (uint16_t)brightnessPct * LED_MAX_DUTY / 100;
   writeRGB((uint8_t)(r * scale / 255),
            (uint8_t)(g * scale / 255),
            (uint8_t)(b * scale / 255));

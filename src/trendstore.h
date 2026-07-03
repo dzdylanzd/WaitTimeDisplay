@@ -28,7 +28,12 @@ private:
   };
   static constexpr int CAPACITY = 250;   // ~2 KB — covers several large parks
   Entry _entries[CAPACITY];
-  int   _nextEvict = 0;                  // round-robin slot reuse when full
+  // Eviction is round-robin by insertion slot, NOT least-recently-seen: once
+  // full, slot 0/1/2/... is reused in order regardless of which ride is
+  // currently on screen. A ride can lose its trend history while a stale one
+  // survives. Acceptable at 250 slots (several large parks' worth); a real
+  // LRU would need per-entry recency tracking this doesn't have.
+  int   _nextEvict = 0;
   int   _count     = 0;
 };
 

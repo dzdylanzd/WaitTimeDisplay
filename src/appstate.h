@@ -47,11 +47,13 @@ private:
   void enterReconnecting();
   void tickReconnecting(unsigned long now);
   void enterNoParksConfigured();
+  void enterWifiTroubleScreen();
 
   bool allRidesClosed() const;
   void applyRideFilter();
   void annotateRides();
   void applyRideDisplayOptions();
+  bool fetchAndProcessRideData();
   void loadParkData();
   void refreshRideData();
   void advanceRide();

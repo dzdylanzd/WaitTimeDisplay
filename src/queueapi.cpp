@@ -136,6 +136,18 @@ bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc,
   return false;
 }
 
+// Fetch parks.json filtered to the fields either caller below needs (id,
+// name, timezone, country, group name), so both share one fetch+filter
+// definition instead of two near-identical copies.
+bool QueueApi::fetchParksDoc(DynamicJsonDocument& doc) {
+  StaticJsonDocument<256> filter;
+  filter[0]["name"] = true;
+  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
+  fPark["id"] = true; fPark["name"] = true;
+  fPark["timezone"] = true; fPark["country"] = true;
+  return httpGetJson("https://queue-times.com/parks.json", doc, &filter);
+}
+
 // Find a park's metadata (timezone + country) in parks.json, caching the
 // result. Returns nullptr when the park is unknown or the fetch failed.
 const QueueApi::TZCache* QueueApi::lookupPark(int parkId) {
@@ -143,14 +155,8 @@ const QueueApi::TZCache* QueueApi::lookupPark(int parkId) {
     if (_tzCache[i].parkId == parkId) return &_tzCache[i];
   }
 
-  // Only parse the fields actually used, so parks.json (tens of KB and
-  // growing) doesn't overflow the response-size gate or the JSON buffer.
-  StaticJsonDocument<192> filter;
-  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
-  fPark["id"] = true; fPark["timezone"] = true; fPark["country"] = true;
-
   DynamicJsonDocument doc(32768);
-  if (!httpGetJson("https://queue-times.com/parks.json", doc, &filter)) return nullptr;
+  if (!fetchParksDoc(doc)) return nullptr;
 
   JsonArray groups = doc.as<JsonArray>();
   for (JsonObject group : groups) {
@@ -249,13 +255,8 @@ bool QueueApi::fetchAvailableParks(std::vector<int>& outIds,
   outNames.clear();
   outGroups.clear();
 
-  StaticJsonDocument<192> filter;
-  filter[0]["name"] = true;
-  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
-  fPark["id"] = true; fPark["name"] = true;
-
   DynamicJsonDocument doc(32768);
-  if (!httpGetJson("https://queue-times.com/parks.json", doc, &filter)) return false;
+  if (!fetchParksDoc(doc)) return false;
 
   JsonArray groups = doc.as<JsonArray>();
   for (JsonObject group : groups) {
