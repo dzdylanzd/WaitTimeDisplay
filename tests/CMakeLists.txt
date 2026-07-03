@@ -21,6 +21,7 @@ add_executable(queuewatch_tests
     ${TESTS_DIR}/test_trendstore.cpp
     ${TESTS_DIR}/test_ridefilter.cpp
     ${TESTS_DIR}/test_button.cpp
+    ${TESTS_DIR}/test_waitlevel.cpp
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
     ${SRC_DIR}/trendstore.cpp

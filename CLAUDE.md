@@ -18,7 +18,7 @@ All scripts are at the **repo root** — double-click or run from any terminal:
 |---|---|
 | `build_sim.bat` | Build the desktop simulator (first run configures CMake) |
 | `run_sim.bat` | Launch the simulator window |
-| `test.bat` | Build and run all 75 unit tests |
+| `test.bat` | Build and run all 79 unit tests |
 | `clean_all.bat` | Delete `sim/build/` and `tests/build/` |
 
 > Simulator config UI: **http://localhost:8080**  
@@ -64,7 +64,7 @@ Creates eight global singletons (incl. `StatusLed` and `Button`), wires them tog
 | `src/lcd_st7789.cpp/h` | Raw SPI driver for the ST7789 panel. Landscape mode (MADCTL=0x60, 320×172). Provides `LCD_Init`, `LCD_SetWindow`, `LCD_WritePixels`. |
 | `src/lvgl_driver.cpp/h` | Registers the ST7789 as LVGL's display driver. Drives `lv_tick_inc()` via `esp_timer`. |
 | `src/configmanager.cpp/h` | Persists `RuntimeConfig` (enabled parks, ride filters, timing values) to NVS via `Preferences`. |
-| `src/queueapi.cpp/h` | HTTP GET → JSON parse from queue-times.com. Caches park timezones (up to 20 entries). |
+| `src/queueapi.cpp/h` | HTTP GET → JSON parse from queue-times.com. Caches park timezone + country (up to 20 entries, shared cache). |
 | `src/wifimgr.cpp/h` | WiFi credential storage (NVS) and captive-portal provisioning. |
 | `src/cfgserver.cpp/h` | `WebServer`-based config UI on port 80: park/ride picker, timing sliders, factory reset (`POST /api/factory-reset` → NVS wipe + `ESP.restart()`). |
 | `src/tzhelper.cpp/h` | IANA → POSIX timezone mapping, NTP sync via `configTzTime()`, `getLocalMinutesOfDay()` for quiet hours. |
@@ -72,7 +72,7 @@ Creates eight global singletons (incl. `StatusLed` and `Button`), wires them tog
 | `src/ridefilter.cpp/h` | Pure `applyDisplayOptions()`: skip-closed / min-wait filtering (reverts if it would empty the list) + favorites-first / wait-desc stable sort. |
 | `src/statusled.cpp/h` | Onboard WS2812 (GPIO8, `neopixelWrite`) mirrors the current ride's wait-level colour; brightness tracks the backlight. Can be disabled entirely via the web UI (`ledEnabled`). |
 | `src/button.cpp/h` | BOOT button (GPIO9, active-low): debounced short press = next ride, 700 ms long press = next park, 10 s hold = factory-reset warning screen, 20 s hold = factory reset + restart (release during the warning cancels). `update()` is a pure, tested state machine. |
-| `src/waitlevel.h` | Shared `pickWaitLevel()` enum — single source of the 15/30/45-min colour thresholds for display themes AND the LED. |
+| `src/waitlevel.h` | Shared `pickWaitLevel()` enum — single source of the wait-level bucketing for display themes AND the LED (thresholds default 15/30/45, user-configurable). |
 | `src/quiethours.h` | Pure `inQuietWindow()` (handles overnight wrap; start==end = never quiet). |
 | `src/config.h` | Hardware pin definitions (incl. `RGB_LED_PIN` 8, `BOOT_BTN_PIN` 9) and compile-time constants. |
 | `lv_conf.h` | LVGL 8.3 configuration (project root, picked up via `-DLV_CONF_INCLUDE_SIMPLE`). |
@@ -81,37 +81,55 @@ Creates eight global singletons (incl. `StatusLed` and `Button`), wires them tog
 
 ```
 BOOT
- └─ no creds ──> WIFI_CONFIG_PORTAL (captive portal)
+ └─ no creds ──> WIFI_CONFIG_PORTAL (captive portal — first boot / after factory reset only)
  └─ has creds -> WIFI_CONNECTING
                   └─ connected ──> STARTUP_INFO (10 s splash)
                                     └─ parks set ──> WAIT_TIME_CYCLE ◄──────────┐
                                     └─ no parks ──> NO_PARKS_CONFIGURED          │
 WAIT_TIME_CYCLE                                                                   │
- └─ WiFi lost ──> RECONNECTING ──> (3 failures) ──> WIFI_CONFIG_PORTAL           │
-                   └─ reconnected ─────────────────────────────────────────────── ┘
+ └─ WiFi lost ──> RECONNECTING ── reconnected ─────────────────────────────────── ┘
 ```
 
-**WiFi credentials survive connect failures.** Entering the portal does NOT
-clear the stored SSID/password — the device may simply be away from its home
-network, and a power cycle back in range must reconnect without reconfiguring.
-`WiFiManager::runCaptivePortal()` therefore blocks until a *new* save
-(`_portalSaved`), not until `isConfigured()`. Credentials are only overwritten
-by a portal save or wiped by a factory reset.
+**Connect failures never fall back into the portal.** On boot timeout
+(`WIFI_CONNECT_TIMEOUT_MS`) or 3 consecutive reconnect failures, the device
+shows `NoDataReason::WIFI_TROUBLE` ("WiFi Not Found — still trying to
+connect...", with the BOOT-20 s recovery hint) and keeps retrying with a
+fresh attempt every `WIFI_RECONNECT_INTERVAL` (`_wifiTrouble` flag in
+`AppStateManager`). The BOOT button's 20 s factory reset is the intended way
+to reconfigure WiFi.
+
+**WiFi credentials survive connect failures.** The portal only overwrites
+them on a *new* save (`WiFiManager::runCaptivePortal()` blocks on
+`_portalSaved`, not `isConfigured()`); a factory reset wipes them.
 
 `AppStateManager::update()` is called every `loop()`. Config-web-server saves are detected there before the state switch and trigger `restartCycle()`.
 
 ### LVGL display design
 
-`DisplayController` owns three pre-built LVGL screens created at `begin()`
-("Magic Night" palette: deep indigo/purple backgrounds, warm gold accents):
+`DisplayController` owns three pre-built LVGL screens created at `begin()`.
+The UI "chrome" colours come from the user-selectable palette (`PALETTES[]`
+in display.cpp, default 0 = "Magic Night": deep indigo/purple, warm gold).
+`applyPalette()` restyles all three screens live (no reboot); every colour
+is read through the `PAL` pointer via the `C_*` macros. Keep `PALETTES[]`,
+`COLOR_PALETTE_COUNT` (configmanager.h) and the `PALETTE_DEFS` swatches
+(cfgserver.cpp JS) in sync.
+
+Wait themes are NOT palette-dependent: the five level colours (and the
+15/30/45 thresholds) are user-configurable via the web UI's "Wait colours"
+section (`RuntimeConfig::waitTh1..3` / `waitColors[5]`, indexed by
+`(int)WaitLevel`). `AppStateManager::applyWaitConfig()` pushes them to
+`DisplayController::setWaitConfig()` (mutable `WAIT_THEMES[]`; the `T_*`
+names are macros into it; panel backgrounds are derived from each accent at
+~7 %/12 % brightness) and `StatusLed::setColors()` — screen and LED always
+agree.
 
 - **`_scrMain`** — normal ride display:
-  - Indigo header panel: park name in gold (Montserrat 16, circular scroll) + WiFi glyph and local time in periwinkle (right-aligned)
+  - Header panel: park name in gold (Montserrat 16, circular scroll); right side stacks the park's country (Montserrat 12, muted — from `QueueApi::getParkCountry`) above the local time in periwinkle. No WiFi glyph — the screen only shows while connected.
   - 1 px gold separator that dims as data ages (see `setDataFreshness`)
   - 3 px progress bar filled in the wait theme's accent colour (animated on ride change)
   - Ride panel (48 px, two rows): 4 px accent stripe + ride name (Montserrat 20, circular scroll) + "3/12" index (gold `* 3/12` when the ride is a favorite); row 2 shows the themed-land name (Montserrat 12, muted — empty for parks without lands)
   - Wait panel: theme-tinted background, 2 px accent top border, big wait number (Montserrat 48), trend arrow + delta top-right (`LV_SYMBOL_UP` red rising / `LV_SYMBOL_DOWN` green falling, hidden when flat/closed) and a letter-spaced caps sub-label ("MINUTE WAIT", "CLOSED" states)
-  - Wait themes (`pickTheme`, mapped from `pickWaitLevel` in waitlevel.h): green ≤ 15 min, amber ≤ 30, orange ≤ 45, red above, teal when closed
+  - Wait themes (`pickTheme`, mapped from `pickWaitLevel` in waitlevel.h): defaults green ≤ 15 min, amber ≤ 30, orange ≤ 45, red above, teal when closed — thresholds and colours user-configurable (see above)
 
 - **`_scrStatus`** — generic info/error/splash:
   - Title with LVGL symbol glyph (Montserrat 20), gold underline
@@ -127,7 +145,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### LCD driver notes
 
-- **Landscape mode**: MADCTL byte `0x68` (MX=1, MV=1, BGR=1). X goes 0–319, Y goes 0–171. `LCD_SetRotation(true)` switches to `0xA8` (MY|MV|BGR) for the user's 180° flip option — the 34-row offset is symmetric so windowing is unchanged; `AppStateManager::applyScreenFlip()` applies it at boot and on config save (with a full `lv_obj_invalidate`).
+- **Landscape mode**: MADCTL byte `0x60` (MX=1, MV=1, RGB order — the BGR bit `0x08` swaps red/blue on this panel; these ST7789 modules ship in both orders). X goes 0–319, Y goes 0–171. `LCD_SetRotation(true)` switches to `0xA0` (MY|MV) for the user's 180° flip option — the 34-row offset is symmetric so windowing is unchanged; `AppStateManager::applyScreenFlip()` applies it at boot and on config save (with a full `lv_obj_invalidate`).
 - **Y offset**: `LCD_SetWindow` adds a fixed offset of 34 to all Y addresses (ST7789 controller has 240 rows, panel is 172 px).
 - **Colour byte order**: `LV_COLOR_16_SWAP 1` in `lv_conf.h` — LVGL swaps bytes before SPI DMA flush.
 - **LVGL tick**: driven by `esp_timer` calling `lv_tick_inc(5)` every 5 ms from `Lvgl_Init()`. In the sim, called manually in the SDL loop.
@@ -143,7 +161,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### NVS namespaces
 - `"queuewatch"` — `ConfigManager` (parks, ride filters/favorites, timings, display + ride-display options) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
-- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr`/`dev_tz` (brightness + quiet hours + quiet-hours timezone + status-LED on/off + 180° screen flip), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
+- Keys: `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks`, `ride_flt`, `ride_fav` (per-park JSON, each capped at 1900 chars — `cfgserver` REJECTS oversized saves rather than truncating), `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr`/`dev_tz`/`pal` (brightness + quiet hours + quiet-hours timezone + status-LED on/off + 180° screen flip + UI colour palette), `wt1`/`wt2`/`wt3`/`wc0`..`wc4` (wait-level thresholds + 0xRRGGBB level colours), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
 
 ### Data flow
 1. `QueueApi::fetchRideData()` populates a fixed `RideInfo[MAX_RIDES]` array (no heap allocation for ride data). Each ride carries its `land` name (empty for lands-less parks like Tokyo).
@@ -215,13 +233,13 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no SDL. HTTP responses are preset via `tests/HTTPClient.h` (MockHTTP map).
 
-### What is tested (75 test cases, 266 assertions)
+### What is tested (84 test cases, 327 assertions)
 
 **`test_configmanager.cpp`** — ConfigManager  
 - `parseEnabledParks`: valid JSON / empty / malformed / non-array / invalid IDs  
 - `isRideEnabled`: no filter / park missing / in filter / not in filter / malformed JSON / cache invalidation  
 - `saveEnabledParks` round-trip / `hasEnabledParks` / `saveTimings`  
-- `saveDisplaySettings` (incl. `ledEnabled`), `saveRideOptions` round-trips  
+- `saveDisplaySettings` (incl. `ledEnabled`), `saveRideOptions`, `savePalette`, `saveWaitConfig` round-trips  
 - `isRideFavorite`: empty / listed / missing park / malformed JSON / cache invalidation  
 - `load()`: every saved setting survives a Preferences reload  
 - `factoryReset`: everything (incl. new settings) back to defaults, survives reload  
@@ -230,6 +248,9 @@ Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no
 - `fetchRideData`: valid parse / land names / lands + top-level rides mixed / non-ASCII transliteration / missing-field defaults / HTTP error / parkId ≤ 0 / MAX_RIDES limit / malformed JSON  
 - `fetchAvailableParks`: valid / HTTP error  
 - `getParkTimezone`: correct TZ / unknown park / cache hit  
+- `getParkCountry`: ASCII folding / missing field / shared cache with the timezone  
+
+**`test_waitlevel.cpp`** — `pickWaitLevel`: default 15/30/45 boundaries, custom thresholds, closed precedence  
 
 **`test_quiethours.cpp`** — `inQuietWindow`: same-day window, overnight wrap, empty window, one-minute windows, boundaries  
 

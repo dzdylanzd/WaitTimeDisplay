@@ -6,7 +6,13 @@
 
 #if __has_include(<esp_task_wdt.h>)
 #include <esp_task_wdt.h>
-#define FEED_WDT() esp_task_wdt_reset()
+// The Arduino loopTask is not subscribed to the task watchdog on the C6,
+// so a blind esp_task_wdt_reset() logs "task_wdt: task not found" on every
+// call. Only feed it when the current task is actually subscribed.
+static inline void feedWdtIfSubscribed() {
+  if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+}
+#define FEED_WDT() feedWdtIfSubscribed()
 #else
 #define FEED_WDT() ((void)0)
 #endif
@@ -127,13 +133,15 @@ bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc,
   return false;
 }
 
-String QueueApi::getParkTimezone(int parkId) {
+// Find a park's metadata (timezone + country) in parks.json, caching the
+// result. Returns nullptr when the park is unknown or the fetch failed.
+const QueueApi::TZCache* QueueApi::lookupPark(int parkId) {
   for (int i = 0; i < _tzCacheCount; i++) {
-    if (_tzCache[i].parkId == parkId) return _tzCache[i].tz;
+    if (_tzCache[i].parkId == parkId) return &_tzCache[i];
   }
 
   DynamicJsonDocument doc(65536);
-  if (!httpGetJson("https://queue-times.com/parks.json", doc)) return "UTC";
+  if (!httpGetJson("https://queue-times.com/parks.json", doc)) return nullptr;
 
   JsonArray groups = doc.as<JsonArray>();
   for (JsonObject group : groups) {
@@ -141,18 +149,30 @@ String QueueApi::getParkTimezone(int parkId) {
     for (JsonObject park : parks) {
       int id = park["id"] | -1;
       if (id == parkId) {
-        String tz(park["timezone"] | "UTC");
-        if (_tzCacheCount < TZ_CACHE_SIZE) {
-          _tzCache[_tzCacheCount].parkId = parkId;
-          _tzCache[_tzCacheCount].tz = tz;
-          _tzCacheCount++;
-        }
-        return tz;
+        // Even when the cache is full the entry must be returned, so the
+        // last slot is overwritten rather than dropping the result.
+        int slot = (_tzCacheCount < TZ_CACHE_SIZE) ? _tzCacheCount
+                                                   : TZ_CACHE_SIZE - 1;
+        _tzCache[slot].parkId  = parkId;
+        _tzCache[slot].tz      = String(park["timezone"] | "UTC");
+        _tzCache[slot].country = sanitizeToAscii(park["country"] | "");
+        if (_tzCacheCount < TZ_CACHE_SIZE) _tzCacheCount++;
+        return &_tzCache[slot];
       }
     }
   }
 
-  return "UTC";
+  return nullptr;
+}
+
+String QueueApi::getParkTimezone(int parkId) {
+  const TZCache* e = lookupPark(parkId);
+  return e ? e->tz : "UTC";
+}
+
+String QueueApi::getParkCountry(int parkId) {
+  const TZCache* e = lookupPark(parkId);
+  return e ? e->country : "";
 }
 
 void QueueApi::appendRide(JsonObject ride, const char* landName,

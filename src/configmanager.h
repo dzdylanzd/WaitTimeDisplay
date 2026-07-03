@@ -16,6 +16,11 @@
 #define SORT_MODE_API_ORDER  0
 #define SORT_MODE_WAIT_DESC  1
 
+// Number of UI colour palettes (RuntimeConfig::colorPalette, 0 = default).
+// The palette definitions live in display.cpp (PALETTES[]) and their names
+// in the web UI (cfgserver.cpp PALETTE_NAMES) — keep all three in sync.
+#define COLOR_PALETTE_COUNT  5
+
 struct RuntimeConfig {
   unsigned long apiRefreshInterval    = DEFAULT_API_REFRESH_INTERVAL;
   unsigned long rotateInterval        = DEFAULT_ROTATE_INTERVAL;
@@ -34,8 +39,17 @@ struct RuntimeConfig {
   uint8_t  quietBrightness   = 0;       // 0 = backlight off during quiet hours
   bool     ledEnabled        = true;    // onboard RGB wait-colour LED
   bool     flipScreen        = false;   // rotate the display 180°
+  uint8_t  colorPalette      = 0;       // UI chrome palette (0 = Magic Night)
   String   deviceTimezone;              // IANA zone for quiet hours;
                                         // "" = follow the displayed park
+
+  // ---- Wait-level thresholds + colours (screen wait panel AND the LED) ----
+  // Level i colour, indexed by (int)WaitLevel: Green/Amber/Orange/Red/Closed.
+  // Defaults match the original fixed themes.
+  uint8_t  waitTh1 = 15;                // "short" up to N minutes
+  uint8_t  waitTh2 = 30;                // "medium" up to N minutes
+  uint8_t  waitTh3 = 45;                // "long" up to N minutes; above = red
+  uint32_t waitColors[5] = { 0x00E676, 0xFFD600, 0xFF7043, 0xFF1744, 0x18FFFF };
 
   // ---- Ride display options (global) ----
   uint8_t sortMode        = SORT_MODE_API_ORDER;
@@ -63,6 +77,9 @@ public:
                            uint16_t quietStartMin, uint16_t quietEndMin,
                            uint8_t quietBrightness, bool ledEnabled,
                            bool flipScreen, const String& deviceTimezone);
+  void savePalette(uint8_t colorPalette);
+  void saveWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
+                      const uint32_t colors[5]);
   void saveRideOptions(uint8_t sortMode, bool favoritesFirst,
                        bool skipClosedRides, uint8_t minWaitMinutes);
   void saveRideFavorites(const String& favoritesJson);

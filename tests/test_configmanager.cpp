@@ -138,6 +138,37 @@ TEST_CASE("saveDisplaySettings: values reflected in getConfig") {
     CHECK(cfg.deviceTimezone    == "Europe/Amsterdam");
 }
 
+// ── savePalette ───────────────────────────────────────────────────────────────
+
+TEST_CASE("savePalette: value reflected in getConfig, out-of-range falls to 0") {
+    ConfigManager mgr;
+    CHECK(mgr.getConfig().colorPalette == 0);   // default
+    mgr.savePalette(3);
+    CHECK(mgr.getConfig().colorPalette == 3);
+    mgr.savePalette(COLOR_PALETTE_COUNT);       // one past the end → default
+    CHECK(mgr.getConfig().colorPalette == 0);
+}
+
+// ── saveWaitConfig ────────────────────────────────────────────────────────────
+
+TEST_CASE("saveWaitConfig: thresholds and colours reflected in getConfig") {
+    ConfigManager mgr;
+    // Defaults first
+    CHECK(mgr.getConfig().waitTh1 == 15);
+    CHECK(mgr.getConfig().waitTh2 == 30);
+    CHECK(mgr.getConfig().waitTh3 == 45);
+    CHECK(mgr.getConfig().waitColors[0] == 0x00E676);
+    CHECK(mgr.getConfig().waitColors[4] == 0x18FFFF);
+
+    const uint32_t cols[5] = { 0x112233, 0x445566, 0x778899, 0xAABBCC, 0xDDEEFF };
+    mgr.saveWaitConfig(5, 10, 20, cols);
+    const auto& cfg = mgr.getConfig();
+    CHECK(cfg.waitTh1 == 5);
+    CHECK(cfg.waitTh2 == 10);
+    CHECK(cfg.waitTh3 == 20);
+    for (int i = 0; i < 5; i++) CHECK(cfg.waitColors[i] == cols[i]);
+}
+
 // ── saveRideOptions ───────────────────────────────────────────────────────────
 
 TEST_CASE("saveRideOptions: values reflected in getConfig") {
@@ -204,6 +235,9 @@ TEST_CASE("load: saved settings survive a reload from Preferences") {
     mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false, true,
                             "Europe/Amsterdam");
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 10);
+    mgr.savePalette(2);
+    const uint32_t waitCols[5] = { 0x111111, 0x222222, 0x333333, 0x444444, 0x555555 };
+    mgr.saveWaitConfig(8, 16, 32, waitCols);
     mgr.saveEnabledParks(R"([{"id":4,"name":"Paris"}])");
     mgr.saveRideFilters(R"({"4":[1,2]})");
     mgr.saveRideFavorites(R"({"4":[2]})");
@@ -221,6 +255,12 @@ TEST_CASE("load: saved settings survive a reload from Preferences") {
     CHECK(cfg.ledEnabled         == false);
     CHECK(cfg.flipScreen         == true);
     CHECK(cfg.deviceTimezone     == "Europe/Amsterdam");
+    CHECK(cfg.colorPalette       == 2);
+    CHECK(cfg.waitTh1            == 8);
+    CHECK(cfg.waitTh2            == 16);
+    CHECK(cfg.waitTh3            == 32);
+    CHECK(cfg.waitColors[0]      == 0x111111);
+    CHECK(cfg.waitColors[4]      == 0x555555);
     CHECK(cfg.sortMode           == SORT_MODE_WAIT_DESC);
     CHECK(cfg.favoritesFirst     == false);
     CHECK(cfg.skipClosedRides    == true);
@@ -243,6 +283,9 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     mgr.saveDisplaySettings(40, true, 21 * 60, 6 * 60, 10, false, true,
                             "Europe/Amsterdam");
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 15);
+    mgr.savePalette(4);
+    const uint32_t waitCols[5] = { 1, 2, 3, 4, 5 };
+    mgr.saveWaitConfig(5, 10, 20, waitCols);
     mgr.saveRideFavorites(R"({"1":[10]})");
     REQUIRE(mgr.hasEnabledParks());
     REQUIRE_FALSE(mgr.isRideEnabled(1, 99));
@@ -263,6 +306,12 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     CHECK(cfg.ledEnabled        == true);
     CHECK(cfg.flipScreen        == false);
     CHECK(cfg.deviceTimezone    == "");
+    CHECK(cfg.colorPalette      == 0);
+    CHECK(cfg.waitTh1           == 15);
+    CHECK(cfg.waitTh2           == 30);
+    CHECK(cfg.waitTh3           == 45);
+    CHECK(cfg.waitColors[0]     == 0x00E676);
+    CHECK(cfg.waitColors[4]     == 0x18FFFF);
     CHECK(cfg.sortMode          == SORT_MODE_API_ORDER);
     CHECK(cfg.favoritesFirst    == true);
     CHECK(cfg.skipClosedRides   == false);

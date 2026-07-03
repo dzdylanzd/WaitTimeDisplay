@@ -87,13 +87,17 @@ void LCD_WritePixels(uint16_t* color, uint32_t numPixels) {
 // ---------------------------------------------------------------------------
 // Rotation — both values are landscape; flip180 turns the image upside-down
 // for mounting the device the other way up.
-//   normal : MADCTL 0x68 (MX=1, MV=1, BGR=1)
-//   flipped: MADCTL 0xA8 (MY=1, MV=1, BGR=1)
+//   normal : MADCTL 0x60 (MX=1, MV=1, RGB order)
+//   flipped: MADCTL 0xA0 (MY=1, MV=1, RGB order)
+// The BGR bit (0x08) must stay CLEAR on this panel: with it set, red and
+// blue swap (a crimson header renders dark blue — seen on hardware).
+// Waveshare-community reference configs default to BGR but note the panels
+// ship in both orders and to flip the setting when colours are wrong.
 // The 34-row offset is symmetric ((240-172)/2), so LCD_SetWindow works
 // unchanged in either orientation.
 // ---------------------------------------------------------------------------
 void LCD_SetRotation(bool flip180) {
-    const uint8_t madctl = flip180 ? 0xA8 : 0x68;
+    const uint8_t madctl = flip180 ? 0xA0 : 0x60;
     _write_cmd_data(0x36, &madctl, 1);
 }
 
@@ -131,9 +135,8 @@ void LCD_Init(void) {
     _write_cmd(0x11);   // Sleep out
     delay(120);
 
-    // MADCTL: landscape (320 wide × 172 tall), see LCD_SetRotation.
-    //   This panel is wired BGR (matches the Waveshare reference driver);
-    //   without the BGR bit red and blue are swapped (gold rendered cyan).
+    // MADCTL: landscape (320 wide × 172 tall), see LCD_SetRotation (RGB
+    //   order — the BGR bit swapped red/blue on this panel).
     //   AppStateManager re-applies the user's flip setting after config load.
     LCD_SetRotation(false);
 

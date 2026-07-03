@@ -4,7 +4,13 @@
 
 #if __has_include(<esp_task_wdt.h>)
 #include <esp_task_wdt.h>
-#define FEED_WDT() esp_task_wdt_reset()
+// The Arduino loopTask is not subscribed to the task watchdog on the C6,
+// so a blind esp_task_wdt_reset() logs "task_wdt: task not found" on every
+// call. Only feed it when the current task is actually subscribed.
+static inline void feedWdtIfSubscribed() {
+  if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+}
+#define FEED_WDT() feedWdtIfSubscribed()
 #else
 #define FEED_WDT() ((void)0)
 #endif
@@ -21,6 +27,22 @@ static int hhmmToMinutes(const char* hhmm, int fallback) {
   if (sscanf(hhmm, "%d:%d", &h, &m) != 2) return fallback;
   if (h < 0 || h > 23 || m < 0 || m > 59) return fallback;
   return h * 60 + m;
+}
+
+// "#rrggbb" (or "rrggbb") → 0xRRGGBB; malformed input keeps the fallback.
+static uint32_t parseHexColor(const char* s, uint32_t fallback) {
+  if (!s) return fallback;
+  if (*s == '#') s++;
+  if (strlen(s) != 6) return fallback;
+  char* end = nullptr;
+  unsigned long v = strtoul(s, &end, 16);
+  return (end && *end == '\0') ? (uint32_t)v : fallback;
+}
+
+static String hexColor(uint32_t c) {
+  char buf[8];
+  snprintf(buf, sizeof(buf), "#%06x", (unsigned)(c & 0xFFFFFF));
+  return String(buf);
 }
 
 static String jsonEscape(const String& s) {
@@ -56,6 +78,13 @@ static const char PROGMEM CONFIG_HTML[] = R"rawliteral(
  --green:#00e676;--amber:#ffd600;--orange:#ff7a45;--red:#ff2d5e;--teal:#25e6e6;
 }
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
+html{scroll-behavior:smooth}
+.section{scroll-margin-top:64px}
+.jumpnav{position:sticky;top:0;z-index:40;margin:-20px -16px 14px;padding:10px 16px;background:rgba(11,10,26,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.jumpin{max-width:760px;margin:0 auto;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
+.jumpin::-webkit-scrollbar{display:none}
+.jumpin a{flex:none;color:var(--text);text-decoration:none;font-size:.8rem;font-weight:600;padding:7px 13px;border-radius:20px;background:var(--input);border:1px solid var(--border2);transition:border-color .15s,background .15s}
+.jumpin a:hover{border-color:var(--accent);background:var(--card2)}
 body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -8%,#2a1e5e 0%,rgba(11,10,26,0) 60%);color:var(--text);min-height:100vh;padding:20px 16px 120px;-webkit-font-smoothing:antialiased}
 .container{max-width:760px;margin:0 auto}
 
@@ -145,9 +174,30 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .fieldsel option{background:var(--card)}
 .field input[type=range]{accent-color:var(--accent);font-size:1rem;padding:6px 0}
 .field input[type=time]{color-scheme:dark;font-size:1.05rem}
+.field input[type=color]{width:100%;height:36px;border:none;background:transparent;padding:0;cursor:pointer}
+.palrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.palcard{flex:1;min-width:92px;max-width:136px;background:var(--input);border:2px solid var(--border);border-radius:12px;padding:8px;cursor:pointer;text-align:center;transition:border-color .15s,transform .12s}
+.palcard:hover{transform:translateY(-1px);border-color:var(--border2)}
+.palcard.sel{border-color:var(--accent)}
+.palprev{border-radius:8px;overflow:hidden;height:44px;display:flex;flex-direction:column}
+.palprev .ph{height:16px}.palprev .pa{height:4px}.palprev .pp{flex:1}
+.palcard .pn{font-size:.72rem;font-weight:600;color:var(--muted);margin-top:6px}
+.palcard.sel .pn{color:var(--text)}
 </style>
 </head>
+)rawliteral"
+R"rawliteral(
 <body>
+<div class="jumpnav"><div class="jumpin">
+  <a href="#sec-timing">&#9201; Timing</a>
+  <a href="#sec-parks">&#127983; Parks</a>
+  <a href="#sec-rides">&#127903; Rides</a>
+  <a href="#sec-display">&#128161; Display</a>
+  <a href="#sec-wait">&#127912; Wait colours</a>
+  <a href="#sec-options">&#11088; Options</a>
+  <a href="#sec-backup">&#128190; Backup</a>
+  <a href="#sec-danger">&#9888; Reset</a>
+</div></div>
 <div class="container">
   <div class="hero">
     <h1>&#127906; QueueWatch</h1>
@@ -156,7 +206,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
   </div>
   <form id="configForm" onsubmit="return saveConfig(event)">
 
-  <div class="section">
+  <div class="section" id="sec-timing">
     <h2><span class="ico">&#9201;</span> Timing</h2>
     <p class="hint">How often the device refreshes live data and rotates through rides.</p>
     <div class="grid">
@@ -167,7 +217,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
     </div>
   </div>
 
-  <div class="section">
+  <div class="section" id="sec-parks">
     <h2><span class="ico">&#127983;</span> Parks <span class="badge-count" id="parkCount">0 selected</span></h2>
     <p class="hint">Choose which parks to cycle through on the display.</p>
     <div class="toolbar">
@@ -179,7 +229,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
     <div id="parkList"></div>
   </div>
 
-  <div class="section">
+  <div class="section" id="sec-rides">
     <h2><span class="ico">&#127903;</span> Rides &amp; Wait Times</h2>
     <p class="hint">Pick a park to see current wait times, then toggle individual rides on or off.</p>
     <select id="parkSelector"><option value="">-- Select a park --</option></select>
@@ -201,7 +251,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 )rawliteral"
 R"rawliteral(
 <div class="container">
-  <div class="section">
+  <div class="section" id="sec-display">
     <h2><span class="ico">&#128161;</span> Display</h2>
     <p class="hint">Screen &amp; LED brightness, plus optional quiet hours when the display dims or switches off. Pick your own timezone below so quiet hours follow the clock on your wall &mdash; not the park's.</p>
     <div class="grid">
@@ -220,8 +270,29 @@ R"rawliteral(
       <div class="field"><label>Quiet-hours timezone</label>
         <select id="dev_tz" class="fieldsel"><option value="">Same as displayed park</option></select></div>
     </div>
+    <div class="grouphdr" style="margin-top:16px">Colour palette</div>
+    <div class="palrow" id="palRow"></div>
   </div>
-  <div class="section">
+  <div class="section" id="sec-wait">
+    <h2><span class="ico">&#127912;</span> Wait colours</h2>
+    <p class="hint">When a wait counts as short, medium or long &mdash; and which colour each level shows on the screen and the LED. Waits above the last threshold use the &ldquo;very long&rdquo; colour.</p>
+    <div class="grid">
+      <div class="field"><label>Short wait up to</label><div class="in"><input type="number" id="wt1" min="1" max="238" step="1" value="15"><span class="unit">min</span></div></div>
+      <div class="field"><label>Medium wait up to</label><div class="in"><input type="number" id="wt2" min="2" max="239" step="1" value="30"><span class="unit">min</span></div></div>
+      <div class="field"><label>Long wait up to</label><div class="in"><input type="number" id="wt3" min="3" max="240" step="1" value="45"><span class="unit">min</span></div></div>
+    </div>
+    <div class="grid" style="margin-top:12px">
+      <div class="field"><label>Short wait</label><input type="color" id="wc0" value="#00e676"></div>
+      <div class="field"><label>Medium wait</label><input type="color" id="wc1" value="#ffd600"></div>
+      <div class="field"><label>Long wait</label><input type="color" id="wc2" value="#ff7043"></div>
+      <div class="field"><label>Very long wait</label><input type="color" id="wc3" value="#ff1744"></div>
+      <div class="field"><label>Ride closed</label><input type="color" id="wc4" value="#18ffff"></div>
+    </div>
+    <div class="toolbar" style="margin:14px 0 0">
+      <button type="button" class="btn btn-ghost" onclick="resetWaitDefaults()">Reset to defaults</button>
+    </div>
+  </div>
+  <div class="section" id="sec-options">
     <h2><span class="ico">&#11088;</span> Ride display options</h2>
     <p class="hint">How rides are ordered and filtered on the device. Mark favorites with the star in the ride list above &mdash; they get a gold marker on the display.</p>
     <div class="grid">
@@ -239,7 +310,7 @@ R"rawliteral(
 )rawliteral"
 R"rawliteral(
 <div class="container">
-  <div class="section">
+  <div class="section" id="sec-backup">
     <h2><span class="ico">&#128190;</span> Backup &amp; Restore</h2>
     <p class="hint">Export the current parks, ride filters and timing settings to a file, or restore a previously exported configuration.</p>
     <div class="toolbar" style="margin-bottom:0">
@@ -248,7 +319,7 @@ R"rawliteral(
       <input type="file" id="importFile" accept=".json,application/json" style="display:none" onchange="importConfig(this)">
     </div>
   </div>
-  <div class="section" style="border-color:#5a2440">
+  <div class="section" style="border-color:#5a2440" id="sec-danger">
     <h2><span class="ico">&#9888;&#65039;</span> Danger zone</h2>
     <p class="hint">Factory reset erases the WiFi credentials, parks, ride filters and timing settings, then restarts the device into WiFi setup mode.</p>
     <button type="button" class="btn" style="background:#c2183f" onclick="factoryReset(this)">Factory Reset</button>
@@ -273,13 +344,40 @@ const $=id=>document.getElementById(id);
 // TZ_TABLE in src/tzhelper.cpp.
 const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
 
+// Palette swatches — order and hexes must match PALETTES[] in src/display.cpp
+// (h=header, a=accent, p=ride panel; count: COLOR_PALETTE_COUNT).
+const PALETTE_DEFS=[
+ {n:'Magic Night',h:'#2A0860',a:'#FFD466',p:'#160A34'},
+ {n:'Deep Ocean',h:'#04386E',a:'#7DF3E8',p:'#06182E'},
+ {n:'Sunset Ember',h:'#6E1A08',a:'#FF8C1A',p:'#2A0E06'},
+ {n:'Forest Twilight',h:'#0C4A20',a:'#9AE22E',p:'#0A2012'},
+ {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'}];
+let selectedPal=0;
+function renderPalRow(){let html='';
+  PALETTE_DEFS.forEach((d,i)=>{
+    html+='<div class="palcard'+(i===selectedPal?' sel':'')+'" onclick="selectedPal='+i+';renderPalRow()">'
+      +'<div class="palprev"><div class="ph" style="background:'+d.h+'"></div>'
+      +'<div class="pa" style="background:'+d.a+'"></div>'
+      +'<div class="pp" style="background:'+d.p+'"></div></div>'
+      +'<div class="pn">'+d.n+'</div></div>';});
+  $('palRow').innerHTML=html;}
+
+const WAIT_DEFAULTS={th:[15,30,45],cols:['#00e676','#ffd600','#ff7043','#ff1744','#18ffff']};
+function resetWaitDefaults(){
+  ['wt1','wt2','wt3'].forEach((id,i)=>$(id).value=WAIT_DEFAULTS.th[i]);
+  WAIT_DEFAULTS.cols.forEach((c,i)=>$('wc'+i).value=c);}
+function readWaitThresholds(){
+  let t=[parseInt($('wt1').value)||15,parseInt($('wt2').value)||30,parseInt($('wt3').value)||45];
+  if(t[1]<=t[0])t[1]=t[0]+1; if(t[2]<=t[1])t[2]=t[1]+1; return t;}
+function readWaitColors(){return [0,1,2,3,4].map(i=>$('wc'+i).value);}
+
 function populateTzSelector(){const sel=$('dev_tz');
   let browserTz='';try{browserTz=Intl.DateTimeFormat().resolvedOptions().timeZone;}catch(e){}
   for(const tz of TZ_LIST){const o=document.createElement('option');o.value=tz;
     o.textContent=tz.replace('_',' ')+(tz===browserTz?' (your timezone)':'');sel.appendChild(o);}}
 
 window.addEventListener('DOMContentLoaded',async()=>{
-  populateTzSelector();
+  populateTzSelector();renderPalRow();
   try{const res=await fetch('/api/config');const cfg=await res.json();
     $('api_int').value=cfg.apiRefreshInterval;
     $('rot_int').value=cfg.rotateInterval;
@@ -293,6 +391,11 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(typeof cfg.ledEnabled==='boolean')$('led_en').checked=cfg.ledEnabled;
     if(typeof cfg.flipScreen==='boolean')$('flip_scr').checked=cfg.flipScreen;
     if(typeof cfg.deviceTimezone==='string')$('dev_tz').value=cfg.deviceTimezone;
+    if(typeof cfg.colorPalette==='number'){selectedPal=cfg.colorPalette;renderPalRow();}
+    if(Array.isArray(cfg.waitThresholds)&&cfg.waitThresholds.length===3){
+      $('wt1').value=cfg.waitThresholds[0];$('wt2').value=cfg.waitThresholds[1];$('wt3').value=cfg.waitThresholds[2];}
+    if(Array.isArray(cfg.waitColors)&&cfg.waitColors.length===5)
+      cfg.waitColors.forEach((c,i)=>$('wc'+i).value=c);
     if(cfg.rideOptions){$('sortMode').value=cfg.rideOptions.sortMode||0;$('favFirst').checked=!!cfg.rideOptions.favoritesFirst;$('skipClosed').checked=!!cfg.rideOptions.skipClosed;$('minWait').value=cfg.rideOptions.minWait||0;}
     if(cfg.rideFavorites)favCache=cfg.rideFavorites;
     if(cfg.enabledParks&&cfg.enabledParks.length){
@@ -358,11 +461,17 @@ async function fetchRidesForPark(parkId){currentParkId=parkId;
     renderRideList();
   }catch(e){c.innerHTML='<p class="empty" style="color:var(--red)">Failed to load rides.</p>';}}
 
+)rawliteral"
+R"rawliteral(
+// Badge colours follow the user-configured thresholds + level colours so the
+// browser list matches what the device (and its LED) will show.
+function levelStyle(c){return 'style="color:'+c+';background:'+c+'22;border:1px solid '+c+'55"';}
 function waitBadge(r){
-  if(r.isOpen===false)return '<span class="badge b-teal">CLOSED</span>';
+  if(r.isOpen===false)return '<span class="badge" '+levelStyle($('wc4').value)+'>CLOSED</span>';
   if(r.waitTime<0)return '<span class="badge b-muted">n/a</span>';
-  const cls=r.waitTime<=15?'b-green':r.waitTime<=30?'b-amber':r.waitTime<=45?'b-orange':'b-red';
-  return '<span class="badge '+cls+'">'+r.waitTime+'<small>min</small></span>';}
+  const t=readWaitThresholds();
+  const i=r.waitTime<=t[0]?0:r.waitTime<=t[1]?1:r.waitTime<=t[2]?2:3;
+  return '<span class="badge" '+levelStyle($('wc'+i).value)+'>'+r.waitTime+'<small>min</small></span>';}
 
 function renderRideStats(){
   const openRides=allRides.filter(r=>r.isOpen);
@@ -397,7 +506,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
   const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
-    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
@@ -441,6 +550,9 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
   if(typeof cfg.ledEnabled==='boolean')body.ledEnabled=cfg.ledEnabled;
   if(typeof cfg.flipScreen==='boolean')body.flipScreen=cfg.flipScreen;
   if(typeof cfg.deviceTimezone==='string')body.deviceTimezone=cfg.deviceTimezone;
+  if(typeof cfg.colorPalette==='number')body.colorPalette=cfg.colorPalette;
+  if(Array.isArray(cfg.waitThresholds))body.waitThresholds=cfg.waitThresholds;
+  if(Array.isArray(cfg.waitColors))body.waitColors=cfg.waitColors;
   if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r=await res.json();
@@ -626,6 +738,12 @@ void ConfigWebServer::handleApiConfig() {
   doc["ledEnabled"]      = cfg.ledEnabled;
   doc["flipScreen"]      = cfg.flipScreen;
   doc["deviceTimezone"]  = cfg.deviceTimezone;
+  doc["colorPalette"]    = cfg.colorPalette;
+
+  JsonArray wt = doc.createNestedArray("waitThresholds");
+  wt.add(cfg.waitTh1); wt.add(cfg.waitTh2); wt.add(cfg.waitTh3);
+  JsonArray wc = doc.createNestedArray("waitColors");
+  for (int i = 0; i < 5; i++) wc.add(hexColor(cfg.waitColors[i]));
 
   JsonObject ro = doc.createNestedObject("rideOptions");
   ro["sortMode"]       = cfg.sortMode;
@@ -737,6 +855,33 @@ void ConfigWebServer::handleSaveConfig() {
                                 (uint16_t)qtEnd, (uint8_t)qtBrt, ledEn, flip,
                                 devTz);
 
+    int pal = doc.containsKey("colorPalette") ? (int)doc["colorPalette"]
+                                              : cur.colorPalette;
+    if (pal < 0 || pal >= COLOR_PALETTE_COUNT) pal = 0;
+    _cfgMgr.savePalette((uint8_t)pal);
+
+    // Wait thresholds + level colours. Missing fields keep current values;
+    // thresholds are clamped to 1..240 and forced strictly ascending.
+    int t1 = cur.waitTh1, t2 = cur.waitTh2, t3 = cur.waitTh3;
+    JsonArray wt = doc["waitThresholds"].as<JsonArray>();
+    if (!wt.isNull() && wt.size() == 3) {
+      t1 = wt[0] | t1; t2 = wt[1] | t2; t3 = wt[2] | t3;
+    }
+    if (t1 < 1)   t1 = 1;
+    if (t1 > 238) t1 = 238;
+    if (t2 <= t1) t2 = t1 + 1;
+    if (t2 > 239) t2 = 239;
+    if (t3 <= t2) t3 = t2 + 1;
+    if (t3 > 240) t3 = 240;
+    uint32_t cols[5];
+    for (int i = 0; i < 5; i++) cols[i] = cur.waitColors[i];
+    JsonArray wc = doc["waitColors"].as<JsonArray>();
+    if (!wc.isNull() && wc.size() == 5) {
+      for (int i = 0; i < 5; i++)
+        cols[i] = parseHexColor(wc[i].as<const char*>(), cols[i]);
+    }
+    _cfgMgr.saveWaitConfig((uint8_t)t1, (uint8_t)t2, (uint8_t)t3, cols);
+
     JsonObject ro = doc["rideOptions"].as<JsonObject>();
     if (!ro.isNull()) {
       int sortMode = ro["sortMode"] | (int)cur.sortMode;
@@ -769,7 +914,7 @@ void ConfigWebServer::handleNotFound() {
 
 String ConfigWebServer::buildConfigPage() {
   String html;
-  html.reserve(32000);
+  html.reserve(40000);
   for (size_t i = 0; CONFIG_HTML[i] != '\0'; i++) html += (char)pgm_read_byte(&CONFIG_HTML[i]);
   return html;
 }

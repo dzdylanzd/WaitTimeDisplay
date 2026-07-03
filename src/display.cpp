@@ -5,51 +5,137 @@
 #include "waitlevel.h"
 
 // ---------------------------------------------------------------------------
-// Colour palette — "Magic Night" theme
+// UI colour palettes — user-selectable in the web UI (NVS key "pal").
+//
+// A palette styles the "chrome" of the UI: header, separators, text and
+// panel backgrounds. The wait-time themes further down are deliberately NOT
+// part of the palette — green/amber/orange/red/teal carry meaning and must
+// look the same in every palette.
+//
+// The palette NAMES live in the web UI (PALETTE_NAMES in cfgserver.cpp) and
+// the count in configmanager.h (COLOR_PALETTE_COUNT) — keep all three in sync.
 // ---------------------------------------------------------------------------
 static const lv_color_t C_BLACK     = LV_COLOR_MAKE(0x00, 0x00, 0x00);
 static const lv_color_t C_WHITE     = LV_COLOR_MAKE(0xFF, 0xFF, 0xFF);
 
-// Header background (solid)
-static const lv_color_t C_HDR_L    = LV_COLOR_MAKE(0x1E, 0x06, 0x42);  // deep indigo
+struct UiPalette {
+    lv_color_t hdrBg;      // header panel background
+    lv_color_t accent;     // separators / trim ("gold"), fresh data
+    lv_color_t accentDim;  // separator, 5–14 min old data
+    lv_color_t accentOld;  // separator, 15+ min old data
+    lv_color_t track;      // progress bar track
+    lv_color_t parkTxt;    // park name + IP/URL text
+    lv_color_t timeTxt;    // header clock
+    lv_color_t idxTxt;     // muted: "3/12", land, country
+    lv_color_t rideTxt;    // ride name
+    lv_color_t bodyTxt;    // body / status text
+    lv_color_t rideBg;     // ride panel background
+    lv_color_t panelBg;    // bottom status/portal bar background
+    lv_color_t statusBg;   // status + portal screen background
+};
 
-// Gold separator — dims as data ages
-static const lv_color_t C_GOLD     = LV_COLOR_MAKE(0xB8, 0x94, 0x1C);  // < 5 min (fresh)
-static const lv_color_t C_GOLD_DIM = LV_COLOR_MAKE(0x70, 0x50, 0x08);  // 5–14 min (stale)
-static const lv_color_t C_GOLD_OLD = LV_COLOR_MAKE(0x58, 0x18, 0x10);  // 15+ min (very stale)
-static const lv_color_t C_SEP      = LV_COLOR_MAKE(0x18, 0x18, 0x38);  // progress bar track
+// Deliberately saturated header/panel hues so switching palettes is
+// unmistakable on the small screen. Keep the swatch hexes in the web UI
+// (PALETTE_DEFS in cfgserver.cpp) matching hdrBg / accent / rideBg.
+static const UiPalette PALETTES[] = {
+  // 0 — Magic Night (default): vivid indigo/purple, warm gold trim
+  { LV_COLOR_MAKE(0x2A,0x08,0x60), LV_COLOR_MAKE(0xC8,0x9E,0x20),
+    LV_COLOR_MAKE(0x70,0x50,0x08), LV_COLOR_MAKE(0x58,0x18,0x10),
+    LV_COLOR_MAKE(0x1C,0x14,0x40), LV_COLOR_MAKE(0xFF,0xD4,0x66),
+    LV_COLOR_MAKE(0x8C,0x9E,0xEE), LV_COLOR_MAKE(0x6E,0x7C,0xBE),
+    LV_COLOR_MAKE(0xEA,0xEA,0xFF), LV_COLOR_MAKE(0x96,0x96,0xC4),
+    LV_COLOR_MAKE(0x16,0x0A,0x34), LV_COLOR_MAKE(0x12,0x08,0x30),
+    LV_COLOR_MAKE(0x1C,0x04,0x40) },
+  // 1 — Deep Ocean: azure blues, cyan trim
+  { LV_COLOR_MAKE(0x04,0x38,0x6E), LV_COLOR_MAKE(0x22,0xC8,0xE0),
+    LV_COLOR_MAKE(0x11,0x70,0x7F), LV_COLOR_MAKE(0x50,0x20,0x14),
+    LV_COLOR_MAKE(0x0E,0x27,0x40), LV_COLOR_MAKE(0x7D,0xF3,0xE8),
+    LV_COLOR_MAKE(0x7F,0xB8,0xDF), LV_COLOR_MAKE(0x52,0x7F,0xA6),
+    LV_COLOR_MAKE(0xE6,0xF4,0xFF), LV_COLOR_MAKE(0x86,0xA6,0xC2),
+    LV_COLOR_MAKE(0x06,0x18,0x2E), LV_COLOR_MAKE(0x04,0x14,0x28),
+    LV_COLOR_MAKE(0x03,0x20,0x40) },
+  // 2 — Sunset Ember: crimson-ember, orange trim
+  { LV_COLOR_MAKE(0x6E,0x1A,0x08), LV_COLOR_MAKE(0xFF,0x8C,0x1A),
+    LV_COLOR_MAKE(0x8A,0x4C,0x0E), LV_COLOR_MAKE(0x58,0x14,0x10),
+    LV_COLOR_MAKE(0x38,0x18,0x10), LV_COLOR_MAKE(0xFF,0xB4,0x5C),
+    LV_COLOR_MAKE(0xE8,0x96,0x78), LV_COLOR_MAKE(0xB0,0x6A,0x54),
+    LV_COLOR_MAKE(0xFF,0xEE,0xE2), LV_COLOR_MAKE(0xC0,0x8E,0x7E),
+    LV_COLOR_MAKE(0x2A,0x0E,0x06), LV_COLOR_MAKE(0x22,0x0A,0x05),
+    LV_COLOR_MAKE(0x38,0x10,0x0A) },
+  // 3 — Forest Twilight: rich greens, lime trim
+  { LV_COLOR_MAKE(0x0C,0x4A,0x20), LV_COLOR_MAKE(0x9A,0xE2,0x2E),
+    LV_COLOR_MAKE(0x50,0x74,0x14), LV_COLOR_MAKE(0x58,0x20,0x10),
+    LV_COLOR_MAKE(0x14,0x2C,0x1C), LV_COLOR_MAKE(0xC2,0xE8,0x6E),
+    LV_COLOR_MAKE(0x8E,0xC8,0xA2), LV_COLOR_MAKE(0x5E,0x8E,0x70),
+    LV_COLOR_MAKE(0xEA,0xF6,0xEC), LV_COLOR_MAKE(0x8E,0xAE,0x98),
+    LV_COLOR_MAKE(0x0A,0x20,0x12), LV_COLOR_MAKE(0x08,0x1A,0x0E),
+    LV_COLOR_MAKE(0x0C,0x2C,0x14) },
+  // 4 — Carbon Mono: graphite greys, white trim
+  { LV_COLOR_MAKE(0x3A,0x3A,0x40), LV_COLOR_MAKE(0xE0,0xE0,0xE4),
+    LV_COLOR_MAKE(0x74,0x74,0x78), LV_COLOR_MAKE(0x58,0x1C,0x14),
+    LV_COLOR_MAKE(0x28,0x28,0x2C), LV_COLOR_MAKE(0xF2,0xF2,0xF4),
+    LV_COLOR_MAKE(0xB4,0xB4,0xBC), LV_COLOR_MAKE(0x8A,0x8A,0x92),
+    LV_COLOR_MAKE(0xF6,0xF6,0xF8), LV_COLOR_MAKE(0xA6,0xA6,0xAE),
+    LV_COLOR_MAKE(0x1A,0x1A,0x1E), LV_COLOR_MAKE(0x14,0x14,0x18),
+    LV_COLOR_MAKE(0x23,0x23,0x28) },
+};
+static constexpr int UI_PALETTE_COUNT = sizeof(PALETTES) / sizeof(PALETTES[0]);
 
-// Text colours
-static const lv_color_t C_PARK_TXT = LV_COLOR_MAKE(0xFF, 0xD4, 0x66);  // warm gold — park name
-static const lv_color_t C_TIME_TXT = LV_COLOR_MAKE(0x70, 0x88, 0xD8);  // periwinkle — clock
-static const lv_color_t C_IDX_TXT  = LV_COLOR_MAKE(0x60, 0x70, 0xA8);  // muted blue — "3/12"
-static const lv_color_t C_RIDE_TXT = LV_COLOR_MAKE(0xEA, 0xEA, 0xFF);  // near-white — ride name
-static const lv_color_t C_BODY_TXT = LV_COLOR_MAKE(0x88, 0x88, 0xB0);  // grey — body / status
+// Active palette — every colour below is read through this pointer, so text
+// and message colours set at call time always use the current palette.
+static const UiPalette* PAL = &PALETTES[0];
 
-// Panel backgrounds
-static const lv_color_t C_RIDE_BG   = LV_COLOR_MAKE(0x0C, 0x0C, 0x20);
-static const lv_color_t C_PANEL_BG  = LV_COLOR_MAKE(0x0A, 0x06, 0x1E);
+#define C_HDR_L    (PAL->hdrBg)
+#define C_GOLD     (PAL->accent)
+#define C_GOLD_DIM (PAL->accentDim)
+#define C_GOLD_OLD (PAL->accentOld)
+#define C_SEP      (PAL->track)
+#define C_PARK_TXT (PAL->parkTxt)
+#define C_TIME_TXT (PAL->timeTxt)
+#define C_IDX_TXT  (PAL->idxTxt)
+#define C_RIDE_TXT (PAL->rideTxt)
+#define C_BODY_TXT (PAL->bodyTxt)
+#define C_RIDE_BG  (PAL->rideBg)
+#define C_PANEL_BG (PAL->panelBg)
+#define C_STAT_BG  (PAL->statusBg)
 
 // ---------------------------------------------------------------------------
 // Wait-time themes: { bgTop, bgBot (gradient), accent }
+//
+// The accent of each level is user-configurable (RuntimeConfig::waitColors,
+// pushed in via setWaitConfig); the dark panel backgrounds are DERIVED from
+// the accent so any picked colour gets matching backgrounds automatically.
+// The thresholds are user-configurable too (waitTh1..3).
 // ---------------------------------------------------------------------------
 struct WaitTheme { lv_color_t bgTop; lv_color_t bgBot; lv_color_t accent; };
 
-static const WaitTheme T_GREEN  = { LV_COLOR_MAKE(0x03,0x12,0x07), LV_COLOR_MAKE(0x06,0x1E,0x0C), LV_COLOR_MAKE(0x00,0xE6,0x76) };
-static const WaitTheme T_AMBER  = { LV_COLOR_MAKE(0x18,0x10,0x00), LV_COLOR_MAKE(0x24,0x1A,0x00), LV_COLOR_MAKE(0xFF,0xD6,0x00) };
-static const WaitTheme T_ORANGE = { LV_COLOR_MAKE(0x18,0x07,0x00), LV_COLOR_MAKE(0x22,0x0D,0x00), LV_COLOR_MAKE(0xFF,0x70,0x43) };
-static const WaitTheme T_RED    = { LV_COLOR_MAKE(0x18,0x00,0x05), LV_COLOR_MAKE(0x22,0x00,0x08), LV_COLOR_MAKE(0xFF,0x17,0x44) };
-static const WaitTheme T_TEAL   = { LV_COLOR_MAKE(0x00,0x0E,0x18), LV_COLOR_MAKE(0x00,0x14,0x22), LV_COLOR_MAKE(0x18,0xFF,0xFF) };
+static WaitTheme themeFromColor(uint32_t rgb) {
+    uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+    WaitTheme t;
+    t.bgTop  = lv_color_make(r * 18 / 255, g * 18 / 255, b * 18 / 255);  // ~7%
+    t.bgBot  = lv_color_make(r * 30 / 255, g * 30 / 255, b * 30 / 255);  // ~12%
+    t.accent = lv_color_make(r, g, b);
+    return t;
+}
 
-// Thresholds live in pickWaitLevel (waitlevel.h) — shared with the status LED.
+// Indexed by (int)WaitLevel. Defaults match RuntimeConfig::waitColors.
+static WaitTheme WAIT_THEMES[5] = {
+    themeFromColor(0x00E676), themeFromColor(0xFFD600),
+    themeFromColor(0xFF7043), themeFromColor(0xFF1744),
+    themeFromColor(0x18FFFF),
+};
+static uint8_t WAIT_TH1 = 15, WAIT_TH2 = 30, WAIT_TH3 = 45;
+
+// Legacy names — the T_* themes are used all over this file.
+#define T_GREEN  (WAIT_THEMES[(int)WaitLevel::Green])
+#define T_AMBER  (WAIT_THEMES[(int)WaitLevel::Amber])
+#define T_ORANGE (WAIT_THEMES[(int)WaitLevel::Orange])
+#define T_RED    (WAIT_THEMES[(int)WaitLevel::Red])
+#define T_TEAL   (WAIT_THEMES[(int)WaitLevel::Closed])
+
 static const WaitTheme& pickTheme(int waitTime, bool isOpen) {
-    switch (pickWaitLevel(waitTime, isOpen)) {
-        case WaitLevel::Closed: return T_TEAL;
-        case WaitLevel::Green:  return T_GREEN;
-        case WaitLevel::Amber:  return T_AMBER;
-        case WaitLevel::Orange: return T_ORANGE;
-        default:                return T_RED;
-    }
+    return WAIT_THEMES[(int)pickWaitLevel(waitTime, isOpen,
+                                          WAIT_TH1, WAIT_TH2, WAIT_TH3)];
 }
 
 // ---------------------------------------------------------------------------
@@ -104,11 +190,11 @@ static constexpr int TREND_H    = 24;
 // Widget helpers
 // ---------------------------------------------------------------------------
 
-// Header clock text: small WiFi glyph + local time ("<wifi>  14:05").
-// The glyph doubles as an at-a-glance "we're online" indicator — the main
-// screen is only ever shown while connected.
+// Header clock text: the displayed park's local time. (No WiFi glyph — the
+// main screen is only ever shown while connected, so it carried no signal;
+// the small country label above the clock says where this time is from.)
 static String clockText() {
-    return String(LV_SYMBOL_WIFI "  ") + getLocalTimeString();
+    return getLocalTimeString();
 }
 static lv_obj_t* makePanel(lv_obj_t* parent, int x, int y, int w, int h,
                             lv_color_t bg, int radius = 0) {
@@ -170,14 +256,21 @@ void DisplayController::_buildMainScreen() {
     lv_obj_set_style_pad_all(_scrMain, 0, LV_PART_MAIN);
     lv_obj_clear_flag(_scrMain, LV_OBJ_FLAG_SCROLLABLE);
 
-    // ── Header: solid deep indigo (flat — no gradient banding on RGB565) ─────
+    // ── Header: solid palette colour (flat — no gradient banding on RGB565) ──
     lv_obj_t* hdr = makePanel(_scrMain, 0, 0, SCR_W, HDR_H, C_HDR_L);
+    _pnlHdr = hdr;
 
     _lblPark = makeLabel(hdr, HDR_PAD_X, HDR_PAD_Y, PARK_LBL_W, HDR_H - HDR_PAD_Y,
                          &lv_font_montserrat_16, C_PARK_TXT,
                          LV_TEXT_ALIGN_LEFT, LV_LABEL_LONG_SCROLL_CIRCULAR);
 
-    _lblTime = makeLabel(hdr, 0, HDR_PAD_Y, SCR_W - 8, HDR_H - HDR_PAD_Y,
+    // Right side, two rows: small country (where the clock's time is from)
+    // above the park-local time.
+    _lblCountry = makeLabel(hdr, 0, 3, SCR_W - 8, 13,
+                            &lv_font_montserrat_12, C_IDX_TXT,
+                            LV_TEXT_ALIGN_RIGHT);
+
+    _lblTime = makeLabel(hdr, 0, 17, SCR_W - 8, 17,
                          &lv_font_montserrat_16, C_TIME_TXT,
                          LV_TEXT_ALIGN_RIGHT);
 
@@ -202,6 +295,7 @@ void DisplayController::_buildMainScreen() {
 
     // ── Ride panel: two rows ─────────────────────────────────────────────────
     lv_obj_t* ridePanel = makePanel(_scrMain, 0, RIDE_Y, SCR_W, RIDE_H, C_RIDE_BG);
+    _pnlRide = ridePanel;
 
     // Left colour stripe — updates with wait theme
     _objRideAccent = makePanel(ridePanel, 0, 0, RIDE_ACCENT_W, RIDE_H, T_GREEN.accent);
@@ -248,8 +342,8 @@ void DisplayController::_buildMainScreen() {
 // ---------------------------------------------------------------------------
 void DisplayController::_buildStatusScreen() {
     _scrStatus = lv_obj_create(nullptr);
-    // Solid deep purple (flat — avoids RGB565 gradient banding)
-    lv_obj_set_style_bg_color(_scrStatus, LV_COLOR_MAKE(0x14, 0x00, 0x2A), LV_PART_MAIN);
+    // Solid palette colour (flat — avoids RGB565 gradient banding)
+    lv_obj_set_style_bg_color(_scrStatus, C_STAT_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_scrStatus, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_scrStatus, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_scrStatus, 0, LV_PART_MAIN);
@@ -259,8 +353,8 @@ void DisplayController::_buildStatusScreen() {
                             &lv_font_montserrat_20, C_WHITE,
                             LV_TEXT_ALIGN_CENTER);
 
-    // Gold separator under title
-    makePanel(_scrStatus, 30, 52, SCR_W - 60, 2, C_GOLD);
+    // Accent separator under title
+    _sepStatus = makePanel(_scrStatus, 30, 52, SCR_W - 60, 2, C_GOLD);
 
     _lblStSub = makeLabel(_scrStatus, 12, 60, SCR_W - 24, 22,
                           &lv_font_montserrat_14, C_TIME_TXT,
@@ -272,7 +366,7 @@ void DisplayController::_buildStatusScreen() {
 
     // Bottom accent panel (solid)
     _objStBottom = makePanel(_scrStatus, 0, 140, SCR_W, 32, C_PANEL_BG);
-    makePanel(_scrStatus, 0, 140, SCR_W, 1, C_GOLD);  // gold top border
+    _lineStBottom = makePanel(_scrStatus, 0, 140, SCR_W, 1, C_GOLD);  // top border
 
     _lblStExtra = makeLabel(_objStBottom, 0, 7, SCR_W, 22,
                             &lv_font_montserrat_16, C_PARK_TXT,
@@ -288,7 +382,7 @@ void DisplayController::_buildStatusScreen() {
 // ---------------------------------------------------------------------------
 void DisplayController::_buildPortalScreen() {
     _scrPortal = lv_obj_create(nullptr);
-    lv_obj_set_style_bg_color(_scrPortal, LV_COLOR_MAKE(0x14, 0x00, 0x2A), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_scrPortal, C_STAT_BG, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(_scrPortal, LV_OPA_COVER, LV_PART_MAIN);
     lv_obj_set_style_border_width(_scrPortal, 0, LV_PART_MAIN);
     lv_obj_set_style_pad_all(_scrPortal, 0, LV_PART_MAIN);
@@ -299,12 +393,14 @@ void DisplayController::_buildPortalScreen() {
                                 &lv_font_montserrat_20, C_PARK_TXT,
                                 LV_TEXT_ALIGN_LEFT);
     lv_label_set_text(title, "Wi-Fi Setup");
+    _lblPortalTitle = title;
 
-    makePanel(_scrPortal, 12, 44, 140, 2, C_GOLD);
+    _sepPortal = makePanel(_scrPortal, 12, 44, 140, 2, C_GOLD);
 
     lv_obj_t* body = makeLabel(_scrPortal, 12, 54, 170, 86,
                                &lv_font_montserrat_14, C_RIDE_TXT,
                                LV_TEXT_ALIGN_LEFT, LV_LABEL_LONG_WRAP);
+    _lblPortalBody = body;
     lv_label_set_text(body,
         "Scan with your phone\ncamera to join, then\nopen the page shown\n(or 192.168.4.1).");
 
@@ -316,7 +412,8 @@ void DisplayController::_buildPortalScreen() {
 
     // Bottom bar — manual-entry fallback (SSID / password)
     lv_obj_t* bar = makePanel(_scrPortal, 0, 148, SCR_W, SCR_H - 148, C_PANEL_BG);
-    makePanel(_scrPortal, 0, 148, SCR_W, 1, C_GOLD);
+    _pnlPortalBar  = bar;
+    _linePortalBar = makePanel(_scrPortal, 0, 148, SCR_W, 1, C_GOLD);
     _lblPortalNet = makeLabel(bar, 0, 3, SCR_W, 20,
                               &lv_font_montserrat_14, T_TEAL.accent,
                               LV_TEXT_ALIGN_CENTER);
@@ -425,6 +522,12 @@ void DisplayController::setRideCount(int count) {
     _rideCount = count;
 }
 
+void DisplayController::setParkCountry(const String& country) {
+    if (country == _parkCountry) return;
+    _parkCountry = country;
+    lv_label_set_text(_lblCountry, country.c_str());   // "" collapses the row
+}
+
 void DisplayController::drawProgressBar(int currentIdx, int totalCount, bool favorite) {
     if (totalCount <= 0) {
         lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
@@ -478,9 +581,67 @@ void DisplayController::redrawWaitTime(const RideInfo& ride) {
 
 void DisplayController::setDataFreshness(int ageMinutes) {
     if (_objGoldSep == nullptr) return;
+    _lastAgeMin = ageMinutes;
     lv_color_t c = (ageMinutes < 5)  ? C_GOLD :
                    (ageMinutes < 15) ? C_GOLD_DIM : C_GOLD_OLD;
     lv_obj_set_style_bg_color(_objGoldSep, c, LV_PART_MAIN);
+}
+
+// ---------------------------------------------------------------------------
+// applyPalette — switch the UI "chrome" palette and restyle every widget
+// that was coloured at build time. Colours applied at call time (message
+// text, wait themes) pick up the new palette on their next draw; the wait
+// themes are palette-independent by design.
+// ---------------------------------------------------------------------------
+void DisplayController::applyPalette(uint8_t paletteId) {
+    if (paletteId >= UI_PALETTE_COUNT) paletteId = 0;
+    PAL = &PALETTES[paletteId];
+
+    // Main screen
+    lv_obj_set_style_bg_color(_pnlHdr, C_HDR_L, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblPark,    C_PARK_TXT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblCountry, C_IDX_TXT,  LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblTime,    C_TIME_TXT, LV_PART_MAIN);
+    setDataFreshness(_lastAgeMin);
+    lv_obj_set_style_bg_color(_barProgress, C_SEP, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_pnlRide, C_RIDE_BG, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblRideName, C_RIDE_TXT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblRideIdx,
+        _lastFavorite ? C_PARK_TXT : C_IDX_TXT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblLand, C_IDX_TXT, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblWaitSub, C_BODY_TXT, LV_PART_MAIN);
+
+    // Status screen (title/sub colours are per-message; the next show*()
+    // call re-applies them from the new palette)
+    lv_obj_set_style_bg_color(_scrStatus, C_STAT_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_sepStatus, C_GOLD, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblStBody, C_BODY_TXT, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_objStBottom, C_PANEL_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_lineStBottom, C_GOLD, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblStExtra, C_PARK_TXT, LV_PART_MAIN);
+
+    // Portal screen
+    lv_obj_set_style_bg_color(_scrPortal, C_STAT_BG, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblPortalTitle, C_PARK_TXT, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_sepPortal, C_GOLD, LV_PART_MAIN);
+    lv_obj_set_style_text_color(_lblPortalBody, C_RIDE_TXT, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_pnlPortalBar, C_PANEL_BG, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(_linePortalBar, C_GOLD, LV_PART_MAIN);
+
+    lv_obj_invalidate(lv_scr_act());
+}
+
+// ---------------------------------------------------------------------------
+// setWaitConfig — user-configured wait thresholds and level colours. The
+// caller repaints (restartCycle / next draw), so no restyle happens here:
+// every wait-theme colour is looked up from WAIT_THEMES at draw time.
+// ---------------------------------------------------------------------------
+void DisplayController::setWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
+                                      const uint32_t colors[5]) {
+    WAIT_TH1 = th1;
+    WAIT_TH2 = th2;
+    WAIT_TH3 = th3;
+    for (int i = 0; i < 5; i++) WAIT_THEMES[i] = themeFromColor(colors[i]);
 }
 
 // ---------------------------------------------------------------------------
@@ -515,6 +676,17 @@ void DisplayController::showNoData(NoDataReason reason) {
         lv_obj_set_style_text_color(_lblStSub, T_RED.accent, LV_PART_MAIN);
         lv_label_set_text(_lblStSub, "WiFi connection lost");
         lv_label_set_text(_lblStBody, "Reconnecting automatically...");
+        lv_label_set_text(_lblStExtra, "");
+        break;
+
+    case NoDataReason::WIFI_TROUBLE:
+        lv_obj_set_style_text_color(_lblStTitle, T_AMBER.accent, LV_PART_MAIN);
+        lv_label_set_text(_lblStTitle, LV_SYMBOL_WIFI "  WiFi Not Found");
+        lv_obj_set_style_text_color(_lblStSub, T_AMBER.accent, LV_PART_MAIN);
+        lv_label_set_text(_lblStSub, "Still trying to connect...");
+        lv_label_set_text(_lblStBody,
+            "Check the network is on and in range.\n"
+            "Hold BOOT 20 s to erase WiFi and set up again.");
         lv_label_set_text(_lblStExtra, "");
         break;
 

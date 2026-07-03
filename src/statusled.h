@@ -13,11 +13,17 @@ public:
   void showLevel(WaitLevel level, uint8_t brightnessPct);
   void off();
 
+  // User-configured level colours (0xRRGGBB, indexed by (int)WaitLevel) —
+  // shared with the display's wait themes via RuntimeConfig::waitColors.
+  void setColors(const uint32_t colors[5]);
+
 private:
   static void writeRGB(uint8_t r, uint8_t g, uint8_t b);
   bool    _isOff     = true;
   WaitLevel _lastLevel = WaitLevel::Green;
   uint8_t _lastBrt   = 255;
+  // Defaults match RuntimeConfig::waitColors (configmanager.h)
+  uint32_t _colors[5] = { 0x00E676, 0xFFD600, 0xFF7043, 0xFF1744, 0x18FFFF };
 };
 
 #endif // STATUSLED_H

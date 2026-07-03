@@ -64,6 +64,8 @@ private:
   void repaintAfterResetWarning();
   void applyBrightness(bool force = false);
   void applyScreenFlip();
+  void applyColorPalette();
+  void applyWaitConfig();
   uint8_t effectiveBrightness() const;
   void updateLed();
 
@@ -106,8 +108,10 @@ private:
   unsigned long _lastBrightnessCheck   = 0;
   bool          _resetWarningActive    = false; // BOOT held ≥10 s, screen frozen
   bool          _lastAppliedFlip       = false; // LCD_Init leaves it unflipped
+  uint8_t       _lastAppliedPalette    = 0;     // screens are built in palette 0
 
   int           _wifiFailCount     = 0;
+  bool          _wifiTrouble       = false;  // trouble screen shown, retrying
   unsigned long _lastWiFiTry       = 0;
   unsigned long _wifiConnectStart  = 0;
   int           _connectingDotCount = 0;

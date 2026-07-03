@@ -13,7 +13,8 @@ enum class NoDataReason {
   NO_PARKS,      // config is empty — point the user at the web UI
   NO_RIDES,      // park returned rides but the filter removed them all
   FETCH_FAILED,  // API fetch failed while WiFi is up
-  WIFI_LOST      // WiFi dropped; AppStateManager is reconnecting
+  WIFI_LOST,     // WiFi dropped; AppStateManager is reconnecting
+  WIFI_TROUBLE   // repeated connect failures; still retrying + recovery hint
 };
 
 /**
@@ -33,6 +34,7 @@ public:
   void begin();
   void drawBackground();
   void drawParkName(const String& parkName, bool force);
+  void setParkCountry(const String& country);  // shown small above the clock
   void setRideCount(int count);
   void drawProgressBar(int currentIdx, int totalCount, bool favorite = false);
   void displayRide(const RideInfo& ride, int rideIdx = 0);
@@ -50,10 +52,22 @@ public:
   // Gold separator dims when data is stale: 0–4 min = gold, 5–14 = amber, 15+ = red
   void setDataFreshness(int ageMinutes);
 
+  // Switch the UI chrome palette (0 = Magic Night default). Restyles all
+  // three screens in place — no reboot needed. Wait-time colours (green/
+  // amber/orange/red/teal) are semantic and stay the same in every palette.
+  void applyPalette(uint8_t paletteId);
+
+  // User-configured wait-time thresholds (minutes) + level colours
+  // (0xRRGGBB, indexed by (int)WaitLevel). Panel backgrounds are derived
+  // from each colour; the caller triggers the repaint.
+  void setWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
+                     const uint32_t colors[5]);
+
 private:
   // ---- State tracking ----
   int    _rideCount    = 0;
   String _lastParkName;
+  String _parkCountry;
   String _lastRideName;
   String _lastLand;
   int    _lastWaitTime = -999;
@@ -61,10 +75,12 @@ private:
   int    _lastRideIdx  = -1;
   int8_t _lastTrend    = 0;
   bool   _lastFavorite = false;
+  int    _lastAgeMin   = 0;    // re-applied by applyPalette()
 
   // ---- Main ride screen ----
   lv_obj_t* _scrMain       = nullptr;
   lv_obj_t* _lblPark       = nullptr;
+  lv_obj_t* _lblCountry    = nullptr;  // small country name above the clock
   lv_obj_t* _lblTime       = nullptr;
   lv_obj_t* _barProgress   = nullptr;
   lv_obj_t* _lblRideIdx    = nullptr;
@@ -77,6 +93,8 @@ private:
   lv_obj_t* _lblWaitSub    = nullptr;  // "minutes" / status sub-text
   lv_obj_t* _objGoldSep    = nullptr;  // 1 px separator below header (dims when stale)
   lv_obj_t* _objRideAccent = nullptr;  // 4 px left stripe on ride panel (theme color)
+  lv_obj_t* _pnlHdr        = nullptr;  // header panel (palette restyle)
+  lv_obj_t* _pnlRide       = nullptr;  // ride panel (palette restyle)
 
   // ---- Status screen ----
   lv_obj_t* _scrStatus   = nullptr;
@@ -85,11 +103,18 @@ private:
   lv_obj_t* _lblStBody   = nullptr;
   lv_obj_t* _objStBottom = nullptr;  // bottom accent panel
   lv_obj_t* _lblStExtra  = nullptr;  // IP / URL in bottom panel
+  lv_obj_t* _sepStatus   = nullptr;  // separator under title (palette restyle)
+  lv_obj_t* _lineStBottom = nullptr; // 1 px line above bottom panel
 
   // ---- Captive-portal screen (Wi-Fi QR code) ----
   lv_obj_t* _scrPortal    = nullptr;
   lv_obj_t* _qrPortal     = nullptr;  // scannable Wi-Fi join code
   lv_obj_t* _lblPortalNet = nullptr;  // SSID / password fallback text
+  lv_obj_t* _lblPortalTitle = nullptr;
+  lv_obj_t* _lblPortalBody  = nullptr;
+  lv_obj_t* _sepPortal      = nullptr;
+  lv_obj_t* _pnlPortalBar   = nullptr;
+  lv_obj_t* _linePortalBar  = nullptr;
 
   void _buildMainScreen();
   void _buildStatusScreen();

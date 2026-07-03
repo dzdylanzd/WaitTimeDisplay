@@ -134,7 +134,7 @@ inline _SerialProxy Serial;
 inline void pinMode(uint8_t, uint8_t) {}
 inline int  digitalRead(uint8_t) { return HIGH; }   // active-low button: never pressed
 inline void digitalWrite(uint8_t, uint8_t) {}
-inline void neopixelWrite(uint8_t, uint8_t, uint8_t, uint8_t) {}
+inline void rgbLedWrite(uint8_t, uint8_t, uint8_t, uint8_t) {}
 
 // ── Misc Arduino globals ──────────────────────────────────────────────────────
 #ifndef min

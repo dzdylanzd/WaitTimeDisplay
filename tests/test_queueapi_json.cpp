@@ -29,14 +29,14 @@ static const char* PARKS_JSON = R"([
   {
     "name": "Disney World",
     "parks": [
-      {"id": 1, "name": "Magic Kingdom",      "timezone": "America/New_York"},
-      {"id": 7, "name": "EPCOT",              "timezone": "America/New_York"}
+      {"id": 1, "name": "Magic Kingdom",      "country": "United States", "timezone": "America/New_York"},
+      {"id": 7, "name": "EPCOT",              "country": "United States", "timezone": "America/New_York"}
     ]
   },
   {
     "name": "Disneyland Resort",
     "parks": [
-      {"id": 16, "name": "Disneyland Park",   "timezone": "America/Los_Angeles"}
+      {"id": 16, "name": "Disneyland Park",   "country": "United States", "timezone": "America/Los_Angeles"}
     ]
   }
 ])";
@@ -247,6 +247,42 @@ TEST_CASE("getParkTimezone: unknown park returns UTC") {
 
     QueueApi api;
     CHECK(api.getParkTimezone(999) == "UTC");
+}
+
+// ── getParkCountry ────────────────────────────────────────────────────────────
+
+TEST_CASE("getParkCountry: returns the park's country, folded to ASCII") {
+    MockHTTP::clear();
+    // "Curaçao" exercises the ASCII transliteration used for LCD text
+    MockHTTP::set("https://queue-times.com/parks.json", R"([
+      {"name":"G","parks":[
+        {"id":1,"name":"P1","country":"United States","timezone":"America/New_York"},
+        {"id":2,"name":"P2","country":"Cura)" "\xC3\xA7" R"(ao","timezone":"UTC"}]}
+    ])");
+
+    QueueApi api;
+    CHECK(api.getParkCountry(1) == "United States");
+    CHECK(api.getParkCountry(2) == "Curacao");
+}
+
+TEST_CASE("getParkCountry: unknown park or missing field returns empty string") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks.json",
+      R"([{"name":"G","parks":[{"id":5,"name":"NoCountry","timezone":"UTC"}]}])");
+
+    QueueApi api;
+    CHECK(api.getParkCountry(5)   == "");   // park exists, no country field
+    CHECK(api.getParkCountry(999) == "");   // park unknown
+}
+
+TEST_CASE("getParkCountry: cached together with the timezone (one fetch)") {
+    MockHTTP::clear();
+    MockHTTP::set("https://queue-times.com/parks.json", PARKS_JSON);
+
+    QueueApi api;
+    CHECK(api.getParkTimezone(7) == "America/New_York");  // fetches + caches
+    MockHTTP::clear();                                    // no HTTP from here on
+    CHECK(api.getParkCountry(7)  == "United States");     // served from cache
 }
 
 TEST_CASE("getParkTimezone: caches result (second call uses cache, not HTTP)") {

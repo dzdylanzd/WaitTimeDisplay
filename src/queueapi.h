@@ -22,6 +22,7 @@ public:
   QueueApi();
 
   String getParkTimezone(int parkId);
+  String getParkCountry(int parkId);   // ASCII-folded, "" when unknown
 
   bool fetchRideData(int parkId,
                      RideInfo rides[], int& rideCount, int maxRides);
@@ -34,11 +35,13 @@ private:
   struct TZCache {
     int    parkId = -1;
     String tz;
+    String country;
   };
   static constexpr int TZ_CACHE_SIZE = 20;
   TZCache _tzCache[TZ_CACHE_SIZE];
   int     _tzCacheCount = 0;
 
+  const TZCache* lookupPark(int parkId);
   bool httpGetJson(const String& url, DynamicJsonDocument& doc,
                    JsonDocument* filter = nullptr);
   static void appendRide(JsonObject ride, const char* landName,

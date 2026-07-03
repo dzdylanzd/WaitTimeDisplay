@@ -19,6 +19,8 @@ void AppStateManager::begin() {
   reloadRuntimeConfig();
   applyBrightness(true);   // LCD_Init leaves the backlight at 100%
   applyScreenFlip();       // ...and the panel unflipped
+  applyColorPalette();     // screens are built in the default palette
+  applyWaitConfig();       // ...and with the default wait thresholds/colours
   if (!_wifi.isConfigured()) transitionTo(SystemState::WIFI_CONFIG_PORTAL);
   else                       transitionTo(SystemState::WIFI_CONNECTING);
 }
@@ -40,6 +42,8 @@ void AppStateManager::update() {
   if (_webServer.isConfigUpdated()) {
     _webServer.clearConfigFlag();
     applyScreenFlip();       // before the repaint restartCycle triggers
+    applyColorPalette();
+    applyWaitConfig();
     restartCycle();
     applyBrightness(true);   // pick up a changed brightness immediately
     transitionTo(SystemState::WAIT_TIME_CYCLE);
@@ -79,21 +83,30 @@ void AppStateManager::enterWifiConnecting() {
   _wifiConnectStart = millis();
   _connectingDotCount = 0;
   _lastDotUpdate = 0;
+  _wifiTrouble = false;
   _display.showConnectingScreen(0);
 }
 
 void AppStateManager::tickWifiConnecting(unsigned long now) {
-  if (now - _wifiConnectStart >= WIFI_CONNECT_TIMEOUT_MS) {
-    // Keep the stored credentials: the network may simply not be in range
-    // (device powered on somewhere else). The portal only overwrites them
-    // when the user saves new ones; a power cycle back home reconnects.
+  if (!_wifiTrouble && now - _wifiConnectStart >= WIFI_CONNECT_TIMEOUT_MS) {
+    // Never fall back to the config portal here: the network may simply be
+    // down or out of range, and the BOOT button (20 s hold) covers the case
+    // where the credentials really are wrong. Tell the user what's going on
+    // and keep retrying forever.
+    _wifiTrouble = true;
     _wifi.resetConnecting();
-    transitionTo(SystemState::WIFI_CONFIG_PORTAL);
-    return;
+    _lastWiFiTry = now;
+    _display.showNoData(NoDataReason::WIFI_TROUBLE);
   }
 
-  // Animate connecting dots every 500 ms
-  if (now - _lastDotUpdate >= 500) {
+  if (_wifiTrouble) {
+    // Start a fresh connection attempt every WIFI_RECONNECT_INTERVAL.
+    if (now - _lastWiFiTry >= WIFI_RECONNECT_INTERVAL) {
+      _lastWiFiTry = now;
+      _wifi.resetConnecting();
+    }
+  } else if (now - _lastDotUpdate >= 500) {
+    // Animate connecting dots every 500 ms
     _connectingDotCount = (_connectingDotCount + 1) & 3;
     _display.showConnectingScreen(_connectingDotCount);
     _lastDotUpdate = now;
@@ -101,6 +114,7 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
 
   _wifi.connect();
   if (WiFi.status() == WL_CONNECTED) {
+    _wifiTrouble = false;
     _webServer.begin();  // revive the config UI if a portal session stopped it
     transitionTo(SystemState::STARTUP_INFO);
   }
@@ -247,6 +261,7 @@ void AppStateManager::refreshRideData() {
 // ==================================================================
 
 void AppStateManager::enterReconnecting() {
+  _wifiTrouble = false;
   _display.showNoData(NoDataReason::WIFI_LOST);
 }
 
@@ -263,6 +278,7 @@ void AppStateManager::tickReconnecting(unsigned long now) {
   if (WiFi.status() == WL_CONNECTED) {
     _wifiFailCount = 0;
     _wifiBeginTime = 0;
+    _wifiTrouble = false;
     _wifi.resetConnecting();
     syncParkTimezone(true);  // force: re-sync NTP after the outage
     resetCycleTimers();
@@ -280,10 +296,12 @@ void AppStateManager::tickReconnecting(unsigned long now) {
     _wifiFailCount++;
     _wifi.resetConnecting();
     _wifiBeginTime = 0;
-    if (_wifiFailCount >= 3) {
-      _wifiFailCount = 0;
-      // Credentials are intentionally kept — see tickWifiConnecting()
-      transitionTo(SystemState::WIFI_CONFIG_PORTAL);
+    if (_wifiFailCount >= 3 && !_wifiTrouble) {
+      // Repeated failures no longer open the config portal (the BOOT button
+      // handles a real reconfiguration): explain how to recover on-screen
+      // and keep retrying — the router may just be rebooting.
+      _wifiTrouble = true;
+      _display.showNoData(NoDataReason::WIFI_TROUBLE);
     }
   }
 }
@@ -341,6 +359,9 @@ void AppStateManager::annotateRides() {
 // the appropriate screen from scratch.
 void AppStateManager::loadParkData() {
   syncParkTimezone();
+  // The header clock shows this park's local time; the small country label
+  // next to it says where that time is from (cached with the timezone).
+  _display.setParkCountry(_api.getParkCountry(_currentParkId));
 
   if (_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) {
     applyRideFilter();
@@ -529,13 +550,18 @@ void AppStateManager::repaintAfterResetWarning() {
       _display.showNoData(NoDataReason::NO_PARKS);
       break;
     case SystemState::RECONNECTING:
-      _display.showNoData(NoDataReason::WIFI_LOST);
+      _display.showNoData(_wifiTrouble ? NoDataReason::WIFI_TROUBLE
+                                       : NoDataReason::WIFI_LOST);
       break;
     case SystemState::STARTUP_INFO:
       _startupScreenShown = false;   // tickStartupInfo repaints it
       break;
+    case SystemState::WIFI_CONNECTING:
+      // The dot animation repaints itself; the trouble screen does not.
+      if (_wifiTrouble) _display.showNoData(NoDataReason::WIFI_TROUBLE);
+      break;
     default:
-      break;   // WIFI_CONNECTING repaints itself every 500 ms
+      break;
   }
 }
 
@@ -579,10 +605,27 @@ void AppStateManager::applyScreenFlip() {
   lv_obj_invalidate(lv_scr_act());
 }
 
+// Restyle the LVGL screens when the user picked a different UI palette.
+void AppStateManager::applyColorPalette() {
+  uint8_t pal = _cfg.getConfig().colorPalette;
+  if (pal == _lastAppliedPalette) return;
+  _lastAppliedPalette = pal;
+  _display.applyPalette(pal);
+}
+
+// Push the user-configured wait thresholds + level colours to the display
+// themes and the LED (they must always agree).
+void AppStateManager::applyWaitConfig() {
+  const RuntimeConfig& cfg = _cfg.getConfig();
+  _display.setWaitConfig(cfg.waitTh1, cfg.waitTh2, cfg.waitTh3, cfg.waitColors);
+  _led.setColors(cfg.waitColors);
+}
+
 // Reflect the currently shown ride (or closed-park state) on the RGB LED.
 // Outside the wait-time cycle the LED stays dark (see transitionTo).
 void AppStateManager::updateLed() {
-  if (!_cfg.getConfig().ledEnabled ||
+  const RuntimeConfig& cfg = _cfg.getConfig();
+  if (!cfg.ledEnabled ||
       _state != SystemState::WAIT_TIME_CYCLE || _rideCount <= 0) {
     _led.off();
     return;
@@ -590,7 +633,8 @@ void AppStateManager::updateLed() {
   WaitLevel level = _showingClosedPark || allRidesClosed()
       ? WaitLevel::Closed
       : pickWaitLevel(_rides[_currentRideIndex].waitTime,
-                      _rides[_currentRideIndex].isOpen);
+                      _rides[_currentRideIndex].isOpen,
+                      cfg.waitTh1, cfg.waitTh2, cfg.waitTh3);
   _led.showLevel(level, _lastAppliedBrightness == 255 ? _cfg.getConfig().brightness
                                                       : _lastAppliedBrightness);
 }
