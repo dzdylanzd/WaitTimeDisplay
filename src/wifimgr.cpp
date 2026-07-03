@@ -102,7 +102,7 @@ Wi-Fi network to try again.</p>
 WiFiManager::WiFiManager() : _configured(false), _webServer(80) {}
 
 void WiFiManager::loadCredentials() {
-  _prefs.begin("queuewatch", true);
+  _prefs.begin(NVS_NAMESPACE, true);
   _ssid = _prefs.getString("ssid", "");
   _pass = _prefs.getString("pass", "");
   _configured = (_ssid.length() > 0);
@@ -110,7 +110,7 @@ void WiFiManager::loadCredentials() {
 }
 
 void WiFiManager::saveCredentials(const String& ssid, const String& pass) {
-  _prefs.begin("queuewatch", false);
+  _prefs.begin(NVS_NAMESPACE, false);
   _prefs.putString("ssid", ssid);
   _prefs.putString("pass", pass);
   _prefs.end();
@@ -118,7 +118,7 @@ void WiFiManager::saveCredentials(const String& ssid, const String& pass) {
 }
 
 void WiFiManager::clearCredentials() {
-  _prefs.begin("queuewatch", false);
+  _prefs.begin(NVS_NAMESPACE, false);
   _prefs.remove("ssid"); _prefs.remove("pass");
   _prefs.end();
   _ssid = ""; _pass = ""; _configured = false;

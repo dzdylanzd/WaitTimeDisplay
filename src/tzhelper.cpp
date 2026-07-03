@@ -9,6 +9,10 @@ void resetTimeCache() {
 
 struct TZEntry { const char* iana; const char* posix; };
 
+// Zones this firmware can map to POSIX TZ rules — keep the entry list (and
+// their count) in sync with TZ_LIST in the web UI (src/cfgserver.cpp), which
+// is the dropdown users pick "deviceTimezone" from. The list here must stay
+// sorted case-insensitively by iana for lookupPosixTZ's binary search below.
 static const TZEntry TZ_TABLE[] = {
   {"America/Chicago",       "CST6CDT,M3.2.0/2,M11.1.0/2"},
   {"America/Denver",        "MST7MDT,M3.2.0/2,M11.1.0/2"},

@@ -4,6 +4,7 @@
 #include "tzhelper.h"
 #include "waitlevel.h"
 #include "waitdefaults.h"
+#include "configmanager.h"
 
 // ---------------------------------------------------------------------------
 // UI colour palettes — user-selectable in the web UI (NVS key "pal").
@@ -13,8 +14,10 @@
 // part of the palette — green/amber/orange/red/teal carry meaning and must
 // look the same in every palette.
 //
-// The palette NAMES live in the web UI (PALETTE_NAMES in cfgserver.cpp) and
-// the count in configmanager.h (COLOR_PALETTE_COUNT) — keep all three in sync.
+// The palette NAMES live in the web UI (PALETTE_DEFS in cfgserver.cpp) — keep
+// that list's length matching PALETTES[] below (a static_assert further down
+// enforces the count against configmanager.h's COLOR_PALETTE_COUNT, so a
+// display/config mismatch fails the build instead of diverging silently).
 // ---------------------------------------------------------------------------
 static const lv_color_t C_BLACK     = LV_COLOR_MAKE(0x00, 0x00, 0x00);
 static const lv_color_t C_WHITE     = LV_COLOR_MAKE(0xFF, 0xFF, 0xFF);
@@ -82,6 +85,11 @@ static const UiPalette PALETTES[] = {
     LV_COLOR_MAKE(0x23,0x23,0x28) },
 };
 static constexpr int UI_PALETTE_COUNT = sizeof(PALETTES) / sizeof(PALETTES[0]);
+// configmanager.h's COLOR_PALETTE_COUNT (validated by cfgserver.cpp and
+// clamped by ConfigManager) must match the actual PALETTES[] entry count,
+// or a saved palette id could be accepted server-side but rejected here.
+static_assert(UI_PALETTE_COUNT == COLOR_PALETTE_COUNT,
+              "PALETTES[] size must match configmanager.h's COLOR_PALETTE_COUNT");
 
 // Active palette — every colour below is read through this pointer, so text
 // and message colours set at call time always use the current palette.

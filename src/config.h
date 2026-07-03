@@ -3,6 +3,12 @@
 
 #include <stdint.h>
 
+// ----------- Storage -----------
+// Shared NVS namespace for ConfigManager (parks/timings/display settings)
+// AND WiFiManager (credentials) — a factory reset wipes both by clearing
+// this one namespace, so the two must agree on the name.
+constexpr const char* NVS_NAMESPACE = "queuewatch";
+
 // ----------- TFT pins (Waveshare ESP32-C6-LCD-1.47) -----------
 // These match lcd_st7789.h but are kept here for modules that need them.
 #define TFT_CS    14

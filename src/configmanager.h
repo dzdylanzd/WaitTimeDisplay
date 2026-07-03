@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include "waitdefaults.h"
+#include "config.h"
 
 // ----------- Timing defaults (ms) -----------
 #define DEFAULT_API_REFRESH_INTERVAL    900000UL  // 15 min
@@ -121,8 +122,6 @@ private:
 
   void rebuildRideFilterCache() const;
   void rebuildFavoriteCache() const;
-
-  static constexpr const char* NVS_NAMESPACE = "queuewatch";
 };
 
 #endif // CONFIGMANAGER_H
