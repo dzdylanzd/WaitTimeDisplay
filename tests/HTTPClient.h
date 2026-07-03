@@ -25,6 +25,7 @@ public:
     bool begin(WiFiClientSecure&, const String& url) { _url = url.c_str(); return true; }
     bool begin(const String& url) { _url = url.c_str(); return true; }
     void setTimeout(int) {}
+    void addHeader(const String&, const String&) {}
 
     int GET() {
         auto it = MockHTTP::responses.find(_url);

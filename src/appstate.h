@@ -12,6 +12,7 @@
 #include "trendstore.h"
 #include "statusled.h"
 #include "button.h"
+#include "otaupdater.h"
 
 enum class SystemState {
   BOOT,
@@ -19,6 +20,13 @@ enum class SystemState {
   WIFI_CONNECTING,
   STARTUP_INFO,
   WAIT_TIME_CYCLE,
+  // Reached only from WAIT_TIME_CYCLE via a web-UI-triggered "Install"
+  // click (see ConfigWebServer::consumeOtaStartRequest()) — checking for an
+  // update happens synchronously inside the web request handler itself
+  // (ConfigWebServer::handleApiOtaCheck()), so by the time this state is
+  // entered the asset URL to download is already known.
+  OTA_DOWNLOADING,
+  OTA_FLASHING,
   RECONNECTING,
   NO_PARKS_CONFIGURED
 };
@@ -48,6 +56,9 @@ private:
   void tickReconnecting(unsigned long now);
   void enterNoParksConfigured();
   void enterWifiTroubleScreen();
+  void enterOtaDownloading();
+  void enterOtaFlashing();
+  static void otaProgressThunk(size_t written, size_t total);
 
   bool allRidesClosed() const;
   void applyRideFilter();
@@ -71,6 +82,15 @@ private:
   void applyWaitConfig();
   uint8_t effectiveBrightness() const;
   void updateLed();
+
+  // The OTA progress callback is a plain function pointer (OtaProgressFn),
+  // not a capturing lambda/std::function, so it can't reach `this` — this
+  // static pointer is the trampoline's only way back to the instance. Safe
+  // because exactly one AppStateManager exists (matches the rest of this
+  // codebase's singleton-per-concern pattern: one DisplayController, one
+  // ConfigWebServer, etc.), and performUpdate() is only ever in flight from
+  // within this same instance's tick, never concurrently.
+  static AppStateManager* _instance;
 
   WiFiManager&       _wifi;
   QueueApi&          _api;
@@ -121,6 +141,15 @@ private:
   int           _connectingDotCount = 0;
   unsigned long _lastDotUpdate     = 0;
   unsigned long _wifiBeginTime     = 0;
+
+  OtaUpdater _ota;
+  String     _otaAssetUrl;               // set by tickWaitTimeCycle() when the
+                                          // web UI's install request is consumed
+  // Post-OTA rollback confirmation: an in-RAM (not persisted) counter of
+  // consecutive successful wait-time fetches since boot. Only relevant when
+  // OtaUpdater::isPendingConfirmation() is true (see appstate.cpp).
+  int  _otaConfirmFetchCount = 0;
+  bool _otaConfirmed         = false;    // true once markBootSuccessful() has run
 };
 
 #endif // APPSTATE_H

@@ -29,11 +29,17 @@ add_executable(queuewatch_tests
     # every symbol they define will be duplicated at link time.
     ${TESTS_DIR}/test_cfgserver.cpp
     ${TESTS_DIR}/test_tzhelper.cpp
+    ${TESTS_DIR}/test_otaupdater_json.cpp
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
+    ${SRC_DIR}/httpjson.cpp
     ${SRC_DIR}/trendstore.cpp
     ${SRC_DIR}/ridefilter.cpp
     ${SRC_DIR}/button.cpp
+    # cfgserver.cpp (pulled in via test_cfgserver.cpp's #include) constructs
+    # an OtaUpdater member; link the sim's no-op stub rather than the real
+    # otaupdater.cpp, which needs Update.h/esp_ota_ops.h (ESP-IDF only).
+    ${SIM_DIR}/otaupdater_sim.cpp
 )
 
 # Include order matters:
@@ -66,6 +72,7 @@ endif()
 add_executable(queuewatch_live_tests
     ${TESTS_DIR}/test_live_api.cpp
     ${SRC_DIR}/queueapi.cpp
+    ${SRC_DIR}/httpjson.cpp
 )
 
 # tests/live/ first so its HTTPClient.h (→ sim WinHTTP) and WiFi.h shadow

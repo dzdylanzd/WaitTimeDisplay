@@ -42,10 +42,15 @@ set(SIM_SOURCES
     ${SIM_DIR}/tzhelper_sim.cpp
     ${SIM_DIR}/wifi_sim.cpp
     ${SIM_DIR}/wifimgr_sim.cpp
+    # otaupdater_sim.cpp stands in for src/otaupdater.cpp: real OTA needs
+    # Update.h/esp_ota_ops.h (ESP-IDF only) with no real flash to write to
+    # in the sim, so it's a no-op stub instead — never add both.
+    ${SIM_DIR}/otaupdater_sim.cpp
     ${SRC_DIR}/appstate.cpp
     ${SRC_DIR}/display.cpp
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
+    ${SRC_DIR}/httpjson.cpp
     ${SRC_DIR}/cfgserver.cpp
     ${SRC_DIR}/trendstore.cpp
     ${SRC_DIR}/ridefilter.cpp

@@ -51,8 +51,6 @@ private:
 
   const TZCache* lookupPark(int parkId);
   bool fetchParksDoc(DynamicJsonDocument& doc);
-  bool httpGetJson(const String& url, DynamicJsonDocument& doc,
-                   JsonDocument* filter = nullptr);
   static void appendRide(JsonObject ride, const char* landName,
                          RideInfo rides[], int& rideCount);
 };

@@ -310,6 +310,15 @@ R"rawliteral(
 )rawliteral"
 R"rawliteral(
 <div class="container">
+  <div class="section" id="sec-firmware">
+    <h2><span class="ico">&#8635;</span> Firmware</h2>
+    <p class="hint">Current version: <strong id="fwCurrent">-</strong></p>
+    <div class="toolbar" style="margin-bottom:0">
+      <button type="button" class="btn btn-ghost" id="otaCheckBtn" onclick="otaCheck(this)">Check for update</button>
+      <button type="button" class="btn" id="otaInstallBtn" style="display:none" onclick="otaInstall(this)">Install update</button>
+    </div>
+    <p class="hint" id="otaStatusLine" style="display:none"></p>
+  </div>
   <div class="section" id="sec-backup">
     <h2><span class="ico">&#128190;</span> Backup &amp; Restore</h2>
     <p class="hint">Export the current parks, ride filters and timing settings to a file, or restore a previously exported configuration.</p>
@@ -326,6 +335,43 @@ R"rawliteral(
   </div>
 </div>
 <script>
+let otaAvailableVersion=null, otaPolling=null;
+async function otaCheck(btn){
+  btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Checking...';
+  const line=$('otaStatusLine');
+  try{const res=await fetch('/api/ota/check');const r=await res.json();
+    if(r.available){
+      otaAvailableVersion=r.latestVersion;
+      $('otaInstallBtn').style.display='';
+      $('otaInstallBtn').innerHTML='Install update '+r.latestVersion;
+      line.style.display='';line.textContent='Update available: '+r.latestVersion;
+    } else {
+      $('otaInstallBtn').style.display='none';
+      line.style.display='';line.textContent='Already up to date ('+r.currentVersion+')';
+    }
+  }catch(e){toast('Check failed','error');}
+  btn.disabled=false;btn.innerHTML='Check for update';}
+
+async function otaInstall(btn){
+  if(!confirm('Install firmware '+otaAvailableVersion+'? The device will restart when done.'))return;
+  btn.disabled=true;$('otaCheckBtn').disabled=true;
+  const line=$('otaStatusLine');line.style.display='';line.textContent='Starting update...';
+  try{const res=await fetch('/api/ota/start',{method:'POST'});const r=await res.json();
+    if(!r.success){toast('Error: '+(r.error||'unknown'),'error');btn.disabled=false;$('otaCheckBtn').disabled=false;return;}
+  }catch(e){toast('Failed to start update','error');btn.disabled=false;$('otaCheckBtn').disabled=false;return;}
+  otaPolling=setInterval(otaPollStatus,2000);}
+
+async function otaPollStatus(){
+  const line=$('otaStatusLine');
+  try{const res=await fetch('/api/ota/status');const r=await res.json();
+    if(r.state==='downloading')line.textContent='Downloading... '+r.progressPct+'%';
+    else if(r.state==='installing')line.textContent='Installing update...';
+    else if(r.state==='success'){line.textContent='Update installed. Restarting...';clearInterval(otaPolling);}
+    else if(r.state==='error'){line.textContent='Update failed: '+r.message;clearInterval(otaPolling);
+      $('otaInstallBtn').disabled=false;$('otaCheckBtn').disabled=false;}
+  }catch(e){/* device likely restarting; stop polling */clearInterval(otaPolling);
+    line.textContent='Update installed. Restarting...';}}
+
 async function factoryReset(btn){
   if(!confirm('Factory reset will erase the WiFi credentials and ALL settings, then restart the device.\n\nContinue?'))return;
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Resetting...';
@@ -379,6 +425,7 @@ function populateTzSelector(){const sel=$('dev_tz');
 window.addEventListener('DOMContentLoaded',async()=>{
   populateTzSelector();renderPalRow();
   try{const res=await fetch('/api/config');const cfg=await res.json();
+    if(cfg.fwVersion)$('fwCurrent').textContent='v'+cfg.fwVersion;
     $('api_int').value=cfg.apiRefreshInterval;
     $('rot_int').value=cfg.rotateInterval;
     $('closed_int').value=cfg.closedParkDisplayTime;
@@ -638,6 +685,9 @@ void ConfigWebServer::begin() {
     _server.on("/api/config", HTTP_GET,  [this]() { handleApiConfig(); });
     _server.on("/api/config", HTTP_POST, [this]() { handleSaveConfig(); });
     _server.on("/api/factory-reset", HTTP_POST, [this]() { handleFactoryReset(); });
+    _server.on("/api/ota/check",  HTTP_GET,  [this]() { handleApiOtaCheck(); });
+    _server.on("/api/ota/start",  HTTP_POST, [this]() { handleApiOtaStart(); });
+    _server.on("/api/ota/status", HTTP_GET,  [this]() { handleApiOtaStatus(); });
     _server.onNotFound([this]() { handleNotFound(); });
     _handlersRegistered = true;
   }
@@ -730,6 +780,7 @@ void ConfigWebServer::handleApiConfig() {
   // Marks this JSON as a QueueWatch config export so importConfig() can
   // reject an unrelated file that happens to share a couple of field names.
   doc["_queuewatch"] = true;
+  doc["fwVersion"] = FIRMWARE_VERSION;
   doc["apiRefreshInterval"]    = cfg.apiRefreshInterval / 1000;
   doc["rotateInterval"]        = cfg.rotateInterval / 1000;
   doc["closedParkDisplayTime"] = cfg.closedParkDisplayTime / 1000;
@@ -944,6 +995,68 @@ void ConfigWebServer::handleFactoryReset() {
   _server.send(200, "application/json",
                "{\"success\":true,\"message\":\"Factory reset - restarting\"}");
   _pendingFactoryReset = true;  // handleClient() restarts after the response
+}
+
+// Runs synchronously in this request handler (blocking the main loop for
+// the duration of the GitHub fetch, same as handleApiParks()/handleApiRides()
+// already do for queue-times.com) — simple, and consistent with this
+// codebase's existing all-blocking-HTTP convention. The result (version +
+// asset URL) is cached so a following "Install" click doesn't need to
+// re-check.
+void ConfigWebServer::handleApiOtaCheck() {
+  bool available = _ota.checkForUpdate(_otaLatestVersion, _otaLatestAssetUrl);
+  if (!available) { _otaLatestVersion = ""; _otaLatestAssetUrl = ""; }
+
+  String json = "{\"available\":";
+  json += available ? "true" : "false";
+  json += ",\"currentVersion\":\"" + jsonEscape(FIRMWARE_VERSION) + "\"";
+  json += ",\"latestVersion\":\"" + jsonEscape(_otaLatestVersion) + "\"}";
+  _server.send(200, "application/json", json);
+}
+
+// Only sets a flag + the cached asset URL; AppStateManager's state machine
+// (not this handler) drives the actual download/flash with LCD feedback —
+// see consumeOtaStartRequest().
+void ConfigWebServer::handleApiOtaStart() {
+  if (_otaLatestAssetUrl.length() == 0) {
+    _server.send(400, "application/json",
+                 "{\"success\":false,\"error\":\"No update available - check first\"}");
+    return;
+  }
+  _pendingOtaStart = true;
+  _otaState        = OtaUiState::Downloading;
+  _otaProgressPct  = 0;
+  _otaMessage      = "";
+  _server.send(200, "application/json", "{\"success\":true,\"message\":\"Update starting\"}");
+}
+
+void ConfigWebServer::handleApiOtaStatus() {
+  const char* stateStr = "idle";
+  switch (_otaState) {
+    case OtaUiState::Checking:     stateStr = "checking";     break;
+    case OtaUiState::Downloading:  stateStr = "downloading";  break;
+    case OtaUiState::Installing:   stateStr = "installing";   break;
+    case OtaUiState::Success:      stateStr = "success";      break;
+    case OtaUiState::Error:        stateStr = "error";        break;
+    default: break;
+  }
+  String json = "{\"state\":\"" + String(stateStr) + "\"";
+  json += ",\"progressPct\":" + String(_otaProgressPct);
+  json += ",\"message\":\"" + jsonEscape(_otaMessage) + "\"}";
+  _server.send(200, "application/json", json);
+}
+
+bool ConfigWebServer::consumeOtaStartRequest(String& outAssetUrl) {
+  if (!_pendingOtaStart) return false;
+  _pendingOtaStart = false;
+  outAssetUrl = _otaLatestAssetUrl;
+  return true;
+}
+
+void ConfigWebServer::setOtaStatus(OtaUiState state, uint8_t progressPct, const String& message) {
+  _otaState       = state;
+  _otaProgressPct = progressPct;
+  _otaMessage     = message;
 }
 
 void ConfigWebServer::handleNotFound() {

@@ -25,12 +25,21 @@ static constexpr int CONNECT_DOT_FRAME_MASK = 3;
 static constexpr uint8_t RESET_WARNING_MIN_BRIGHTNESS = 30;
 // How long showFactoryResetting() stays up before the actual wipe + restart.
 static constexpr unsigned long FACTORY_RESET_DISPLAY_MS = 600UL;
+// How long showOtaInstalling() stays up before Update.end() + restart.
+static constexpr unsigned long OTA_INSTALL_DISPLAY_MS = 600UL;
+// Consecutive successful wait-time fetches after an OTA update before
+// canceling the ESP-IDF app-rollback safety net (see OtaUpdater).
+static constexpr int OTA_CONFIRM_FETCH_COUNT = 3;
+
+AppStateManager* AppStateManager::_instance = nullptr;
 
 AppStateManager::AppStateManager(WiFiManager& wifi, QueueApi& api,
                                   ConfigManager& cfg, DisplayController& display,
                                   ConfigWebServer& webServer, StatusLed& led)
   : _wifi(wifi), _api(api), _cfg(cfg),
-    _display(display), _webServer(webServer), _led(led) {}
+    _display(display), _webServer(webServer), _led(led) {
+  _instance = this;
+}
 
 void AppStateManager::begin() {
   reloadRuntimeConfig();
@@ -163,6 +172,14 @@ void AppStateManager::tickStartupInfo(unsigned long now) {
 void AppStateManager::tickWaitTimeCycle(unsigned long now) {
   if (WiFi.status() != WL_CONNECTED) {
     transitionTo(SystemState::RECONNECTING);
+    return;
+  }
+
+  // Web-UI "Install update" click. The version/asset-URL check already
+  // happened synchronously inside ConfigWebServer::handleApiOtaCheck(), so
+  // by the time this flag is set the asset to download is already known.
+  if (_webServer.consumeOtaStartRequest(_otaAssetUrl)) {
+    transitionTo(SystemState::OTA_DOWNLOADING);
     return;
   }
 
@@ -342,6 +359,58 @@ void AppStateManager::enterWifiTroubleScreen() {
 }
 
 // ==================================================================
+// OTA_DOWNLOADING / OTA_FLASHING
+// ==================================================================
+
+// Static trampoline for OtaUpdater's plain-function-pointer progress
+// callback (it can't capture `this`) — see the _instance comment in
+// appstate.h for why a single static pointer is safe here.
+void AppStateManager::otaProgressThunk(size_t written, size_t total) {
+  if (!_instance) return;
+  uint8_t pct = (total > 0) ? (uint8_t)((written * 100) / total) : 0;
+  _instance->_display.showOtaDownloading(pct);
+  _instance->_webServer.setOtaStatus(OtaUiState::Downloading, pct);
+}
+
+// Like the captive portal (enterWifiConfigPortal()), this blocks fully
+// inside itself — performUpdate() is one long synchronous call, matching
+// every other HTTP operation in this codebase — and transitions onward
+// before returning, so update()'s switch never actually reaches a tick
+// handler for this state.
+void AppStateManager::enterOtaDownloading() {
+  _display.showOtaDownloading(0);
+  _webServer.setOtaStatus(OtaUiState::Downloading, 0);
+
+  OtaResult result = _ota.performUpdate(_otaAssetUrl, &AppStateManager::otaProgressThunk);
+
+  if (result == OtaResult::Success) {
+    transitionTo(SystemState::OTA_FLASHING);
+    return;
+  }
+
+  const char* msg = "Update failed";
+  switch (result) {
+    case OtaResult::ErrorNotEnoughSpace: msg = "Not enough space for update"; break;
+    case OtaResult::ErrorDownloadFailed: msg = "Download failed"; break;
+    case OtaResult::ErrorFlashFailed:    msg = "Flash verification failed"; break;
+    case OtaResult::ErrorNotSupported:   msg = "OTA not supported"; break;
+    default: break;
+  }
+  _webServer.setOtaStatus(OtaUiState::Error, 0, msg);
+  // Never touches the currently-running image on failure (see performUpdate()'s
+  // comment) — just resume normal ride-cycling, repainted fresh.
+  transitionTo(SystemState::WAIT_TIME_CYCLE);
+  restartCycle();
+}
+
+void AppStateManager::enterOtaFlashing() {
+  _display.showOtaInstalling();
+  _webServer.setOtaStatus(OtaUiState::Installing, 100);
+  delay(OTA_INSTALL_DISPLAY_MS);   // long enough to read before the panel goes dark
+  ESP.restart();
+}
+
+// ==================================================================
 // transitionTo
 // ==================================================================
 
@@ -355,6 +424,8 @@ void AppStateManager::transitionTo(SystemState newState) {
     case SystemState::WIFI_CONNECTING:     enterWifiConnecting();     break;
     case SystemState::RECONNECTING:        enterReconnecting();       break;
     case SystemState::NO_PARKS_CONFIGURED: enterNoParksConfigured();  break;
+    case SystemState::OTA_DOWNLOADING:     enterOtaDownloading();     break;
+    case SystemState::OTA_FLASHING:        enterOtaFlashing();        break;
     default: break;
   }
 }
@@ -402,6 +473,19 @@ bool AppStateManager::fetchAndProcessRideData() {
   applyRideDisplayOptions();
   _display.setRideCount(_rideCount);
   _display.setDataFreshness(0);
+
+  // Post-OTA rollback confirmation: once enough successful fetches have
+  // happened since boot, cancel the ESP-IDF app-rollback safety net so this
+  // image is considered good (see OtaUpdater::markBootSuccessful()). A
+  // no-op fast path once already confirmed or when nothing is pending.
+  if (!_otaConfirmed) {
+    if (!OtaUpdater::isPendingConfirmation()) {
+      _otaConfirmed = true;
+    } else if (++_otaConfirmFetchCount >= OTA_CONFIRM_FETCH_COUNT) {
+      OtaUpdater::markBootSuccessful();
+      _otaConfirmed = true;
+    }
+  }
   return true;
 }
 

@@ -1,0 +1,16 @@
+# QueueWatch OTA partition table for 8MB flash.
+#
+# Byte-exact extension of the stock huge_app.csv (which this project used
+# before OTA support): nvs/otadata/app0 are copied unchanged so existing NVS
+# data (WiFi credentials + all saved config) survives the switch with zero
+# relocation risk. huge_app.csv already defines otadata + a single ota_0 app
+# slot (OTA-shaped, but with no fallback slot) and only uses 4MB of the 8MB
+# flash -- this table adds the missing ota_1 slot and uses the remaining 4MB.
+#
+# Name,     Type, SubType, Offset,   Size,     Flags
+nvs,        data, nvs,     0x9000,   0x5000,
+otadata,    data, ota,     0xe000,   0x2000,
+app0,       app,  ota_0,   0x10000,  0x300000,
+app1,       app,  ota_1,   0x310000, 0x300000,
+spiffs,     data, spiffs,  0x610000, 0x1E0000,
+coredump,   data, coredump,0x7F0000, 0x10000,

@@ -750,6 +750,33 @@ void DisplayController::showFactoryResetting() {
     lv_refr_now(NULL);
 }
 
+void DisplayController::showOtaDownloading(uint8_t progressPct) {
+    lv_obj_set_style_text_color(_lblStTitle, C_GOLD, LV_PART_MAIN);
+    lv_label_set_text(_lblStTitle, LV_SYMBOL_DOWNLOAD "  Downloading Update");
+    lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
+    char pctBuf[8];
+    snprintf(pctBuf, sizeof(pctBuf), "%u%%", (unsigned)progressPct);
+    lv_label_set_text(_lblStSub, pctBuf);
+    lv_label_set_text(_lblStBody, "Please don't power off the device.");
+    lv_label_set_text(_lblStExtra, "");
+    if (lv_scr_act() != _scrStatus) lv_scr_load(_scrStatus);
+    lv_refr_now(NULL);
+}
+
+// The caller restarts the device right after this returns, so the screen is
+// loaded directly and painted NOW — a fade animation would never finish
+// (same reasoning as showFactoryResetting()).
+void DisplayController::showOtaInstalling() {
+    lv_obj_set_style_text_color(_lblStTitle, C_GOLD, LV_PART_MAIN);
+    lv_label_set_text(_lblStTitle, LV_SYMBOL_OK "  Installing Update");
+    lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
+    lv_label_set_text(_lblStSub, "Verifying and applying...");
+    lv_label_set_text(_lblStBody, "The device will restart shortly.");
+    lv_label_set_text(_lblStExtra, "");
+    if (lv_scr_act() != _scrStatus) lv_scr_load(_scrStatus);
+    lv_refr_now(NULL);
+}
+
 void DisplayController::showClosedPark(const String& parkName) {
     _loadMain();
     drawParkName(parkName, true);

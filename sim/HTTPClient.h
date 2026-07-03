@@ -83,6 +83,13 @@ public:
         if (_hRequest) WinHttpSetTimeouts(_hRequest, ms, ms, ms, ms);
     }
 
+    void addHeader(const String& name, const String& value) {
+        if (!_hRequest) return;
+        std::wstring header = _httpToWide(std::string(name.c_str()) + ": " + value.c_str());
+        WinHttpAddRequestHeaders(_hRequest, header.c_str(), (DWORD)-1L,
+                                  WINHTTP_ADDREQ_FLAG_ADD);
+    }
+
     int GET() {
         if (!_hRequest) return -1;
         _body.clear(); _statusCode = -1;

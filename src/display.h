@@ -44,6 +44,12 @@ public:
   void showNoData(NoDataReason reason = NoDataReason::FETCH_FAILED);
   void showFactoryResetWarning();   // BOOT held 10 s — "keep holding to erase"
   void showFactoryResetting();      // BOOT held 20 s — painted just before restart
+  // OTA update in progress (web-UI triggered). Both force an immediate
+  // redraw, like showFactoryResetting(), since the caller is blocked inside
+  // a long-running download/flash and lv_timer_handler() won't run again
+  // until it returns.
+  void showOtaDownloading(uint8_t progressPct);
+  void showOtaInstalling();         // painted just before Update.end() + restart
   void showClosedPark(const String& parkName);
   void showCaptivePortalInfo(const char* apName, const char* apPass);
   void showStartupInfo(const String& ipAddress);

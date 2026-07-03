@@ -57,13 +57,23 @@ public:
         }
     }
 
+    // NOTE: deliberately NOT httplib's set_error_handler() -- that fires for
+    // ANY response with status >= 400, including ones a matched route's own
+    // handler intentionally sent (e.g. a 400 validation error), silently
+    // overwriting it. Arduino's real WebServer::onNotFound() only fires when
+    // no route matches at all, so a catch-all route (registered last, after
+    // every specific .on() call in ConfigWebServer::begin()) is the correct
+    // equivalent: httplib tries registered patterns in registration order,
+    // so this is only reached when nothing more specific matched first.
     void onNotFound(std::function<void()> h) {
-        _svr.set_error_handler([this, h](const httplib::Request& req, httplib::Response& res) {
+        auto fn = [this, h](const httplib::Request& req, httplib::Response& res) {
             std::lock_guard<std::mutex> lock(_reqMtx);
             _curReq = &req; _curRes = &res;
             h();
             _curReq = nullptr; _curRes = nullptr;
-        });
+        };
+        _svr.Get(".*", fn);
+        _svr.Post(".*", fn);
     }
 
     void begin() {
