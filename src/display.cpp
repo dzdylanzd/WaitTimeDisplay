@@ -468,7 +468,7 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
         char num[8];
         snprintf(num, sizeof(num), "%d", ride.waitTime);
         lv_label_set_text(_lblWaitNum, num);
-        lv_label_set_text(_lblWaitSub, "MINUTE WAIT");  // reads right for 1 and many
+        lv_label_set_text(_lblWaitSub, "MIN WAIT");  // sidesteps the singular/plural issue
     }
 
     // Trend arrow: red rising (wait getting worse), green falling. Hidden

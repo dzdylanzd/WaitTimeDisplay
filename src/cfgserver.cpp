@@ -510,8 +510,12 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
-    if(result.success)toast('&#10003; Saved! Display cycle restarting...','success');
-    else toast('Error: '+(result.error||'unknown'),'error');
+    if(result.success){
+      const eff=result.effective||{};
+      const adjusted=['brightness','quietBrightness','colorPalette','minWait'].some(k=>eff[k]!==undefined&&eff[k]!==body[k]&&eff[k]!==body.rideOptions?.[k])
+        ||(eff.waitThresholds&&JSON.stringify(eff.waitThresholds)!==JSON.stringify(body.waitThresholds));
+      toast(adjusted?'&#10003; Saved (some values were adjusted to valid ranges)':'&#10003; Saved! Display cycle restarting...','success');
+    } else toast('Error: '+(result.error||'unknown'),'error');
   }catch(e){toast('Failed to save configuration','error');}
   btn.disabled=false;btn.innerHTML='&#10003; Save &amp; Restart Cycle';return false;}
 
@@ -530,7 +534,7 @@ async function exportConfig(btn){btn.disabled=true;
 async function importConfig(input){const file=input.files[0];input.value='';if(!file)return;
   let cfg;
   try{cfg=JSON.parse(await file.text());}catch(e){toast('Not a valid JSON file','error');return;}
-  if(!cfg||typeof cfg!=='object'||!Array.isArray(cfg.enabledParks)||typeof cfg.apiRefreshInterval!=='number'){
+  if(!cfg||typeof cfg!=='object'||cfg._queuewatch!==true||!Array.isArray(cfg.enabledParks)||typeof cfg.apiRefreshInterval!=='number'){
     toast('Not a QueueWatch config file','error');return;}
   if(!confirm('Import "'+file.name+'"?\n\nThis replaces the parks, ride filters and timing settings on the device.'))return;
   // Explicit null clears stale filters for parks kept from the old config.
@@ -718,6 +722,9 @@ void ConfigWebServer::handleApiRides() {
 void ConfigWebServer::handleApiConfig() {
   const RuntimeConfig& cfg = _cfgMgr.getConfig();
   DynamicJsonDocument doc(12288);
+  // Marks this JSON as a QueueWatch config export so importConfig() can
+  // reject an unrelated file that happens to share a couple of field names.
+  doc["_queuewatch"] = true;
   doc["apiRefreshInterval"]    = cfg.apiRefreshInterval / 1000;
   doc["rotateInterval"]        = cfg.rotateInterval / 1000;
   doc["closedParkDisplayTime"] = cfg.closedParkDisplayTime / 1000;
@@ -773,14 +780,20 @@ void ConfigWebServer::handleSaveConfig() {
   }
   FEED_WDT();
 
+  // Clamped to the same [min,max] the web UI's number inputs enforce, so a
+  // hand-crafted or imported POST can't sneak past the client-side limits.
   unsigned long apiRefresh = (unsigned long)((int)doc["apiRefreshInterval"] * 1000UL);
   unsigned long rotate     = (unsigned long)((int)doc["rotateInterval"]     * 1000UL);
   unsigned long closedPark = (unsigned long)((int)doc["closedParkDisplayTime"] * 1000UL);
   unsigned long timeUpdate = (unsigned long)((int)doc["timeUpdateInterval"] * 1000UL);
-  if (apiRefresh < 30000) apiRefresh = 30000;
-  if (rotate     < 3000)  rotate     = 3000;
-  if (closedPark < 5000)  closedPark = 5000;
-  if (timeUpdate < 10000) timeUpdate = 10000;
+  if (apiRefresh < 30000)   apiRefresh = 30000;
+  if (apiRefresh > 3600000) apiRefresh = 3600000;
+  if (rotate     < 3000)    rotate     = 3000;
+  if (rotate     > 300000)  rotate     = 300000;
+  if (closedPark < 5000)    closedPark = 5000;
+  if (closedPark > 300000)  closedPark = 300000;
+  if (timeUpdate < 10000)   timeUpdate = 10000;
+  if (timeUpdate > 600000)  timeUpdate = 600000;
   _cfgMgr.saveTimings(apiRefresh, rotate, closedPark, timeUpdate);
   FEED_WDT();
 
@@ -827,6 +840,7 @@ void ConfigWebServer::handleSaveConfig() {
 
   // Display settings + ride options. Missing keys keep the current values so
   // config files exported by older firmware still import cleanly.
+  String effectiveJson;
   {
     const RuntimeConfig& cur = _cfgMgr.getConfig();
     int brt = doc.containsKey("brightness") ? (int)doc["brightness"] : cur.brightness;
@@ -897,11 +911,27 @@ void ConfigWebServer::handleSaveConfig() {
       _cfgMgr.saveRideOptions((uint8_t)sortMode, favFirst, skipClosed,
                               (uint8_t)minWait);
     }
+
+    // Several fields above are silently clamped (brightness, quiet
+    // brightness, palette, wait thresholds, minWait) — echo what was
+    // actually saved (post-clamp) so the UI can reflect a server-side
+    // adjustment instead of showing the user's unclamped input as accepted.
+    const RuntimeConfig& saved = _cfgMgr.getConfig();
+    DynamicJsonDocument effDoc(384);
+    effDoc["brightness"]      = saved.brightness;
+    effDoc["quietBrightness"] = saved.quietBrightness;
+    effDoc["colorPalette"]    = saved.colorPalette;
+    JsonArray effTh = effDoc.createNestedArray("waitThresholds");
+    effTh.add(saved.waitTh1); effTh.add(saved.waitTh2); effTh.add(saved.waitTh3);
+    if (!ro.isNull()) effDoc["minWait"] = saved.minWaitMinutes;
+    serializeJson(effDoc, effectiveJson);
   }
   FEED_WDT();
 
   _configUpdated = true;
-  _server.send(200, "application/json", "{\"success\":true,\"message\":\"Configuration saved\"}");
+  String response = "{\"success\":true,\"message\":\"Configuration saved\",\"effective\":" +
+                     effectiveJson + "}";
+  _server.send(200, "application/json", response);
 }
 
 void ConfigWebServer::handleFactoryReset() {
