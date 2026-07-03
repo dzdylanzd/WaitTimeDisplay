@@ -21,6 +21,10 @@ QueueApi::QueueApi() {
   for (int i = 0; i < TZ_CACHE_SIZE; i++) {
     _tzCache[i].parkId = -1;
   }
+  _parksFilter[0]["name"] = true;
+  JsonObject fPark = _parksFilter[0]["parks"][0].to<JsonObject>();
+  fPark["id"] = true; fPark["name"] = true;
+  fPark["timezone"] = true; fPark["country"] = true;
 }
 
 // Map a Unicode code point to its closest ASCII form, or "" to drop it.
@@ -140,12 +144,7 @@ bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc,
 // name, timezone, country, group name), so both share one fetch+filter
 // definition instead of two near-identical copies.
 bool QueueApi::fetchParksDoc(DynamicJsonDocument& doc) {
-  StaticJsonDocument<256> filter;
-  filter[0]["name"] = true;
-  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
-  fPark["id"] = true; fPark["name"] = true;
-  fPark["timezone"] = true; fPark["country"] = true;
-  return httpGetJson("https://queue-times.com/parks.json", doc, &filter);
+  return httpGetJson("https://queue-times.com/parks.json", doc, &_parksFilter);
 }
 
 // Find a park's metadata (timezone + country) in parks.json, caching the

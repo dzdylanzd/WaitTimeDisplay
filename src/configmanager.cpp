@@ -26,14 +26,13 @@ void ConfigManager::load() {
   _config.colorPalette      = (uint8_t)_prefs.getInt("pal", 0);
   if (_config.colorPalette >= COLOR_PALETTE_COUNT) _config.colorPalette = 0;
 
-  RuntimeConfig defaults;   // for the wait-colour fallbacks below
-  _config.waitTh1 = (uint8_t)_prefs.getInt("wt1", defaults.waitTh1);
-  _config.waitTh2 = (uint8_t)_prefs.getInt("wt2", defaults.waitTh2);
-  _config.waitTh3 = (uint8_t)_prefs.getInt("wt3", defaults.waitTh3);
+  _config.waitTh1 = (uint8_t)_prefs.getInt("wt1", WAIT_TH_DEFAULTS[0]);
+  _config.waitTh2 = (uint8_t)_prefs.getInt("wt2", WAIT_TH_DEFAULTS[1]);
+  _config.waitTh3 = (uint8_t)_prefs.getInt("wt3", WAIT_TH_DEFAULTS[2]);
   for (int i = 0; i < 5; i++) {
     char key[4] = { 'w', 'c', (char)('0' + i), '\0' };
     _config.waitColors[i] =
-        (uint32_t)_prefs.getInt(key, (int32_t)defaults.waitColors[i]);
+        (uint32_t)_prefs.getInt(key, (int32_t)WAIT_COLOR_DEFAULTS[i]);
   }
   _config.deviceTimezone    = _prefs.getString("dev_tz", "");
 

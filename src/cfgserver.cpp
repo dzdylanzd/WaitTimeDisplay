@@ -582,7 +582,12 @@ function escapeHtml(str){return String(str).replace(/&/g,'&amp;').replace(/</g,'
 // must then reject the save (truncating would store unparseable JSON).
 static bool mergePerParkJson(const String& existing, JsonObject incoming,
                              const std::vector<int>& keepParkIds, String& out) {
-  DynamicJsonDocument mergedDoc(8192);
+  // Must be generously larger than NVS_JSON_MAX: ArduinoJson's per-node pool
+  // overhead means a doc sized close to the raw JSON limit can silently
+  // truncate the merge (dropping ride ids) before the length check below
+  // ever sees an over-budget result -- a copy failure that's much worse
+  // than the "reject the save" behavior this function promises.
+  DynamicJsonDocument mergedDoc(NVS_JSON_MAX * 8);
   JsonObject merged;
   if (existing.length() > 0 && !deserializeJson(mergedDoc, existing)
       && mergedDoc.is<JsonObject>()) {

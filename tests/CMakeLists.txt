@@ -22,6 +22,13 @@ add_executable(queuewatch_tests
     ${TESTS_DIR}/test_ridefilter.cpp
     ${TESTS_DIR}/test_button.cpp
     ${TESTS_DIR}/test_waitlevel.cpp
+    ${TESTS_DIR}/test_appstate_logic.cpp
+    # test_cfgserver.cpp and test_tzhelper.cpp #include their corresponding
+    # src/*.cpp directly (internal-linkage helpers aren't otherwise
+    # reachable) -- do NOT also list cfgserver.cpp/tzhelper.cpp below, or
+    # every symbol they define will be duplicated at link time.
+    ${TESTS_DIR}/test_cfgserver.cpp
+    ${TESTS_DIR}/test_tzhelper.cpp
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
     ${SRC_DIR}/trendstore.cpp

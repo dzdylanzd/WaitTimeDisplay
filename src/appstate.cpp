@@ -3,6 +3,7 @@
 #include "tzhelper.h"
 #include "quiethours.h"
 #include "ridefilter.h"
+#include "ridereindex.h"
 #include "waitlevel.h"
 #include "lcd_st7789.h"
 
@@ -235,24 +236,13 @@ void AppStateManager::refreshRideData() {
     prevWait[i] = _rides[i].waitTime;
     prevOpen[i] = _rides[i].isOpen;
   }
-  int currentRideId = (prevCount > 0 && _currentRideIndex < prevCount)
-                       ? prevId[_currentRideIndex] : -1;
-
   if (!fetchAndProcessRideData()) return;
 
   // Wait-desc sorting can reorder rides between refreshes, so the same index
   // may now point at a different ride — re-find the ride the user was
   // actually looking at by id instead of just clamping the old index.
-  if (_rideCount == 0) {
-    _currentRideIndex = 0;
-  } else {
-    int found = -1;
-    for (int i = 0; i < _rideCount; i++) {
-      if (_rides[i].id == currentRideId) { found = i; break; }
-    }
-    _currentRideIndex = (found >= 0) ? found
-                       : (_currentRideIndex < _rideCount ? _currentRideIndex : 0);
-  }
+  _currentRideIndex = reindexAfterRefresh(prevId, prevCount, _currentRideIndex,
+                                           _rides, _rideCount);
 
   // NOTE: wait-desc sorting can reorder rides between refreshes; the name
   // diff below detects that as a structure change and repaints fully.

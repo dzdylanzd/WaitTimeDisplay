@@ -599,9 +599,15 @@ void DisplayController::setDataFreshness(int ageMinutes) {
 using PaletteColorFn = void (*)(lv_obj_t*, lv_color_t, lv_style_selector_t);
 
 struct PaletteBinding {
-    lv_obj_t**      widget;
-    lv_color_t      UiPalette::* field;
-    PaletteColorFn  setter;
+    // A true pointer-to-member (not a raw lv_obj_t**) so the table is safe
+    // as a function-local `static const` regardless of which
+    // DisplayController instance calls applyPalette() first — a raw member
+    // address would be captured from whatever `this` happened to be on the
+    // static's one-time initialization, silently aliasing every other
+    // instance thereafter.
+    lv_obj_t* DisplayController::* widget;
+    lv_color_t                     UiPalette::* field;
+    PaletteColorFn                 setter;
 };
 
 void DisplayController::applyPalette(uint8_t paletteId) {
@@ -613,33 +619,33 @@ void DisplayController::applyPalette(uint8_t paletteId) {
     // re-derived via setDataFreshness). Adding a new plain palette-coloured
     // widget only needs a row here, not a hand-written set_style_* call.
     static const PaletteBinding kBindings[] = {
-        { &_pnlHdr,        &UiPalette::hdrBg,    lv_obj_set_style_bg_color   },
-        { &_lblPark,       &UiPalette::parkTxt,  lv_obj_set_style_text_color },
-        { &_lblCountry,    &UiPalette::idxTxt,   lv_obj_set_style_text_color },
-        { &_lblTime,       &UiPalette::timeTxt,  lv_obj_set_style_text_color },
-        { &_barProgress,   &UiPalette::track,    lv_obj_set_style_bg_color   },
-        { &_pnlRide,       &UiPalette::rideBg,   lv_obj_set_style_bg_color   },
-        { &_lblRideName,   &UiPalette::rideTxt,  lv_obj_set_style_text_color },
-        { &_lblLand,       &UiPalette::idxTxt,   lv_obj_set_style_text_color },
-        { &_lblWaitSub,    &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_pnlHdr,        &UiPalette::hdrBg,    lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblPark,       &UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_lblCountry,    &UiPalette::idxTxt,   lv_obj_set_style_text_color },
+        { &DisplayController::_lblTime,       &UiPalette::timeTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_barProgress,   &UiPalette::track,    lv_obj_set_style_bg_color   },
+        { &DisplayController::_pnlRide,       &UiPalette::rideBg,   lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblRideName,   &UiPalette::rideTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_lblLand,       &UiPalette::idxTxt,   lv_obj_set_style_text_color },
+        { &DisplayController::_lblWaitSub,    &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
         // Status screen (title/sub colours are per-message; the next show*()
         // call re-applies them from the new palette)
-        { &_scrStatus,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
-        { &_sepStatus,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
-        { &_lblStBody,     &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
-        { &_objStBottom,   &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
-        { &_lineStBottom,  &UiPalette::accent,   lv_obj_set_style_bg_color   },
-        { &_lblStExtra,    &UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_scrStatus,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
+        { &DisplayController::_sepStatus,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblStBody,     &UiPalette::bodyTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_objStBottom,   &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
+        { &DisplayController::_lineStBottom,  &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblStExtra,    &UiPalette::parkTxt,  lv_obj_set_style_text_color },
         // Portal screen
-        { &_scrPortal,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
-        { &_lblPortalTitle,&UiPalette::parkTxt,  lv_obj_set_style_text_color },
-        { &_sepPortal,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
-        { &_lblPortalBody, &UiPalette::rideTxt,  lv_obj_set_style_text_color },
-        { &_pnlPortalBar,  &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
-        { &_linePortalBar, &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &DisplayController::_scrPortal,     &UiPalette::statusBg, lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblPortalTitle,&UiPalette::parkTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_sepPortal,     &UiPalette::accent,   lv_obj_set_style_bg_color   },
+        { &DisplayController::_lblPortalBody, &UiPalette::rideTxt,  lv_obj_set_style_text_color },
+        { &DisplayController::_pnlPortalBar,  &UiPalette::panelBg,  lv_obj_set_style_bg_color   },
+        { &DisplayController::_linePortalBar, &UiPalette::accent,   lv_obj_set_style_bg_color   },
     };
     for (const PaletteBinding& b : kBindings) {
-        b.setter(*b.widget, PAL->*(b.field), LV_PART_MAIN);
+        b.setter(this->*b.widget, PAL->*(b.field), LV_PART_MAIN);
     }
 
     // Special cases that aren't a plain palette-field lookup.

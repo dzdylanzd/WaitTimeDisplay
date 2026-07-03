@@ -24,6 +24,10 @@ public:
   String getParkTimezone(int parkId);
   String getParkCountry(int parkId);   // ASCII-folded, "" when unknown
 
+  // Returns true and populates rideCount/rides[] with up to maxRides entries
+  // on success. On failure (false), rideCount/rides[] are left UNTOUCHED (not
+  // zeroed) — callers must decide their own "keep stale data" vs "clear it"
+  // policy for a failed fetch; this function doesn't decide it for them.
   bool fetchRideData(int parkId,
                      RideInfo rides[], int& rideCount, int maxRides);
 
@@ -40,6 +44,10 @@ private:
   static constexpr int TZ_CACHE_SIZE = 20;
   TZCache _tzCache[TZ_CACHE_SIZE];
   int     _tzCacheCount = 0;
+
+  // Built once in the constructor and reused by fetchParksDoc() — the
+  // parks.json filter shape never changes between calls.
+  StaticJsonDocument<256> _parksFilter;
 
   const TZCache* lookupPark(int parkId);
   bool fetchParksDoc(DynamicJsonDocument& doc);
