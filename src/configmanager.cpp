@@ -13,10 +13,14 @@ void ConfigManager::load() {
   String parksJson              = _prefs.getString("enabled_pks", "");
 
   _config.brightness        = (uint8_t)_prefs.getInt("brt", 100);
+  if (_config.brightness < 5 || _config.brightness > 100) _config.brightness = 100;
   _config.quietHoursEnabled = _prefs.getBool("qt_en", false);
   _config.quietStartMin     = (uint16_t)_prefs.getInt("qt_sta", 22 * 60);
+  if (_config.quietStartMin > 1439) _config.quietStartMin = 22 * 60;
   _config.quietEndMin       = (uint16_t)_prefs.getInt("qt_end", 7 * 60);
+  if (_config.quietEndMin > 1439) _config.quietEndMin = 7 * 60;
   _config.quietBrightness   = (uint8_t)_prefs.getInt("qt_brt", 0);
+  if (_config.quietBrightness > 100) _config.quietBrightness = 0;
   _config.ledEnabled        = _prefs.getBool("led_en", true);
   _config.flipScreen        = _prefs.getBool("flip_scr", false);
   _config.colorPalette      = (uint8_t)_prefs.getInt("pal", 0);
@@ -34,6 +38,7 @@ void ConfigManager::load() {
   _config.deviceTimezone    = _prefs.getString("dev_tz", "");
 
   _config.sortMode          = (uint8_t)_prefs.getInt("sort_mode", SORT_MODE_API_ORDER);
+  if (_config.sortMode > SORT_MODE_WAIT_DESC) _config.sortMode = SORT_MODE_API_ORDER;
   _config.favoritesFirst    = _prefs.getBool("fav_first", true);
   _config.skipClosedRides   = _prefs.getBool("skip_closed", false);
   _config.minWaitMinutes    = (uint8_t)_prefs.getInt("min_wait", 0);
@@ -169,7 +174,9 @@ bool ConfigManager::parseEnabledParks(const String& json,
                                        std::vector<String>& outNames) {
   outIds.clear();
   outNames.clear();
-  DynamicJsonDocument doc(4096);
+  // enabledParks isn't budget-capped like the per-park filter/favorite JSON,
+  // so size generously off the actual input rather than a fixed guess.
+  DynamicJsonDocument doc(json.length() * 2 + 512);
   DeserializationError err = deserializeJson(doc, json);
   if (err) {
     Serial.printf("ConfigManager: failed to parse enabledParks JSON: %s\n", err.c_str());
@@ -193,9 +200,10 @@ void ConfigManager::rebuildRideFilterCache() const {
     _rideFilterCacheValid = true;
     return;
   }
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(NVS_JSON_MAX * 3);
   DeserializationError err = deserializeJson(doc, _config.rideFiltersJson);
   if (err) {
+    Serial.printf("ConfigManager: failed to parse rideFiltersJson: %s\n", err.c_str());
     _rideFilterCacheValid = true;
     return;
   }
@@ -230,9 +238,10 @@ void ConfigManager::rebuildFavoriteCache() const {
     _favoriteCacheValid = true;
     return;
   }
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(NVS_JSON_MAX * 3);
   DeserializationError err = deserializeJson(doc, _config.rideFavoritesJson);
   if (err) {
+    Serial.printf("ConfigManager: failed to parse rideFavoritesJson: %s\n", err.c_str());
     _favoriteCacheValid = true;
     return;
   }

@@ -2,9 +2,42 @@
 #include "config.h"
 #include <WiFi.h>
 
+#if __has_include(<esp_task_wdt.h>)
+#include <esp_task_wdt.h>
+// The Arduino loopTask is not subscribed to the task watchdog on the C6, so a
+// blind esp_task_wdt_reset() logs "task_wdt: task not found" on every call.
+// Only feed it when the current task is actually subscribed.
+static inline void feedWdtIfSubscribed() {
+  if (esp_task_wdt_status(NULL) == ESP_OK) esp_task_wdt_reset();
+}
+#define FEED_WDT() feedWdtIfSubscribed()
+#else
+#define FEED_WDT() ((void)0)
+#endif
+
 static const char* AP_SSID = "QueueWatch-Config";
 static const char* AP_PASS = "config123";
 static const byte  DNS_PORT = 53;
+
+// Escape text before it is interpolated into the portal HTML. Nearby AP SSIDs
+// (and submitted values) are attacker-controllable and can contain <, >, ", '
+// or & — without escaping they break the page or inject markup.
+static String htmlEscape(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '&': out += "&amp;";  break;
+      case '<': out += "&lt;";   break;
+      case '>': out += "&gt;";   break;
+      case '"': out += "&quot;"; break;
+      case '\'': out += "&#39;"; break;
+      default:  out += c;        break;
+    }
+  }
+  return out;
+}
 
 static String buildConfigPage(const String& msg, const String& storedSsid) {
   String page = R"(
@@ -29,13 +62,13 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
 )";
   if (msg.length() > 0) {
     String cssClass = (msg.indexOf("Saved") >= 0) ? "msg" : "msg err";
-    page += "<div class='" + cssClass + "'>" + msg + "</div>";
+    page += "<div class='" + cssClass + "'>" + htmlEscape(msg) + "</div>";
   }
   // Reassure the user that the previously working network is not lost: it
   // stays stored until they submit a new one here.
   if (storedSsid.length() > 0) {
     page += "<div class='msg' style='color:#a0a0b0'>Saved network: <strong>" +
-            storedSsid + "</strong><br>It is kept until you save a new one.</div>";
+            htmlEscape(storedSsid) + "</strong><br>It is kept until you save a new one.</div>";
   }
   page += R"(
 <form action='/save' method='POST'>
@@ -60,8 +93,9 @@ h1{color:#4ecca3;font-size:1.5rem;margin-bottom:1rem;}
 p{color:#a0a0b0;margin-bottom:1rem;}
 </style></head><body><div class='card'>
 <h1>&#10003; Saved!</h1>
-<p>Connecting to <strong>)") + ssid + R"(</strong>...</p>
-<p>This page will close automatically.</p>
+<p>Attempting to connect to <strong>)") + htmlEscape(ssid) + R"(</strong>&hellip;</p>
+<p>If the wrong password was entered, reconnect to the <strong>QueueWatch-Config</strong>
+Wi-Fi network to try again.</p>
 </div></body></html>)";
 }
 
@@ -141,6 +175,7 @@ void WiFiManager::runCaptivePortal() {
   while (true) {
     _dnsServer.processNextRequest();
     _webServer.handleClient();
+    FEED_WDT();
     delay(10);
     if (_portalSaved) break;
   }

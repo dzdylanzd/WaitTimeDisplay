@@ -5,6 +5,7 @@
 #include <Preferences.h>
 #include <vector>
 #include <map>
+#include "waitdefaults.h"
 
 // ----------- Timing defaults (ms) -----------
 #define DEFAULT_API_REFRESH_INTERVAL    900000UL  // 15 min
@@ -20,6 +21,13 @@
 // The palette definitions live in display.cpp (PALETTES[]) and their names
 // in the web UI (cfgserver.cpp PALETTE_NAMES) — keep all three in sync.
 #define COLOR_PALETTE_COUNT  5
+
+// Max length of a serialized per-park JSON string (ride filters / favorites)
+// that's allowed into NVS — cfgserver.cpp rejects saves that would exceed
+// this. The JSON parse buffer that reads it back (configmanager.cpp) must be
+// generously larger than this, since ArduinoJson's per-token overhead can
+// exceed the raw string length for arrays of many short numeric ids.
+#define NVS_JSON_MAX  1900
 
 struct RuntimeConfig {
   unsigned long apiRefreshInterval    = DEFAULT_API_REFRESH_INTERVAL;
@@ -45,11 +53,14 @@ struct RuntimeConfig {
 
   // ---- Wait-level thresholds + colours (screen wait panel AND the LED) ----
   // Level i colour, indexed by (int)WaitLevel: Green/Amber/Orange/Red/Closed.
-  // Defaults match the original fixed themes.
-  uint8_t  waitTh1 = 15;                // "short" up to N minutes
-  uint8_t  waitTh2 = 30;                // "medium" up to N minutes
-  uint8_t  waitTh3 = 45;                // "long" up to N minutes; above = red
-  uint32_t waitColors[5] = { 0x00E676, 0xFFD600, 0xFF7043, 0xFF1744, 0x18FFFF };
+  // Defaults come from waitdefaults.h (the single source for all consumers).
+  uint8_t  waitTh1 = WAIT_TH_DEFAULTS[0];   // "short" up to N minutes
+  uint8_t  waitTh2 = WAIT_TH_DEFAULTS[1];   // "medium" up to N minutes
+  uint8_t  waitTh3 = WAIT_TH_DEFAULTS[2];   // "long" up to N minutes; above = red
+  uint32_t waitColors[5] = {
+    WAIT_COLOR_DEFAULTS[0], WAIT_COLOR_DEFAULTS[1], WAIT_COLOR_DEFAULTS[2],
+    WAIT_COLOR_DEFAULTS[3], WAIT_COLOR_DEFAULTS[4]
+  };
 
   // ---- Ride display options (global) ----
   uint8_t sortMode        = SORT_MODE_API_ORDER;

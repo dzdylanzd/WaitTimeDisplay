@@ -101,9 +101,12 @@ bool QueueApi::httpGetJson(const String& url, DynamicJsonDocument& doc,
     FEED_WDT();
 
     if (httpCode == 200) {
+      // getSize() returns -1 when the server didn't send Content-Length
+      // (e.g. chunked encoding) — treat that as unknown/untrusted rather
+      // than letting an unbounded body through the size gate.
       int size = http.getSize();
-      if (size > (int)HTTP_MAX_RESPONSE_SIZE) {
-        Serial.printf("HTTP response too large: %d bytes (max %u)\n",
+      if (size < 0 || size > (int)HTTP_MAX_RESPONSE_SIZE) {
+        Serial.printf("HTTP response rejected: %d bytes (max %u)\n",
                       size, (unsigned)HTTP_MAX_RESPONSE_SIZE);
         http.end();
         return false;
@@ -140,8 +143,14 @@ const QueueApi::TZCache* QueueApi::lookupPark(int parkId) {
     if (_tzCache[i].parkId == parkId) return &_tzCache[i];
   }
 
-  DynamicJsonDocument doc(65536);
-  if (!httpGetJson("https://queue-times.com/parks.json", doc)) return nullptr;
+  // Only parse the fields actually used, so parks.json (tens of KB and
+  // growing) doesn't overflow the response-size gate or the JSON buffer.
+  StaticJsonDocument<192> filter;
+  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
+  fPark["id"] = true; fPark["timezone"] = true; fPark["country"] = true;
+
+  DynamicJsonDocument doc(32768);
+  if (!httpGetJson("https://queue-times.com/parks.json", doc, &filter)) return nullptr;
 
   JsonArray groups = doc.as<JsonArray>();
   for (JsonObject group : groups) {
@@ -240,8 +249,13 @@ bool QueueApi::fetchAvailableParks(std::vector<int>& outIds,
   outNames.clear();
   outGroups.clear();
 
-  DynamicJsonDocument doc(65536);
-  if (!httpGetJson("https://queue-times.com/parks.json", doc)) return false;
+  StaticJsonDocument<192> filter;
+  filter[0]["name"] = true;
+  JsonObject fPark = filter[0]["parks"][0].to<JsonObject>();
+  fPark["id"] = true; fPark["name"] = true;
+
+  DynamicJsonDocument doc(32768);
+  if (!httpGetJson("https://queue-times.com/parks.json", doc, &filter)) return false;
 
   JsonArray groups = doc.as<JsonArray>();
   for (JsonObject group : groups) {

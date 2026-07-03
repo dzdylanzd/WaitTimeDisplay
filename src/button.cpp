@@ -26,7 +26,7 @@ ButtonEvent Button::update(bool pressed, unsigned long now) {
       _resetFired = false;
     } else if (_warnFired && !_resetFired) {
       return ButtonEvent::HoldCancel;   // let go during the warning window
-    } else if (!_longFired) {
+    } else if (!_longFired && !_warnFired && !_resetFired) {
       return ButtonEvent::Short;   // release before the long threshold
     }
   }

@@ -3,6 +3,7 @@
 #include "lvgl_driver.h"
 #include "tzhelper.h"
 #include "waitlevel.h"
+#include "waitdefaults.h"
 
 // ---------------------------------------------------------------------------
 // UI colour palettes — user-selectable in the web UI (NVS key "pal").
@@ -36,7 +37,8 @@ struct UiPalette {
 
 // Deliberately saturated header/panel hues so switching palettes is
 // unmistakable on the small screen. Keep the swatch hexes in the web UI
-// (PALETTE_DEFS in cfgserver.cpp) matching hdrBg / accent / rideBg.
+// (PALETTE_DEFS in cfgserver.cpp: h=hdrBg, a=accent, p=rideBg) matching
+// these values.
 static const UiPalette PALETTES[] = {
   // 0 — Magic Night (default): vivid indigo/purple, warm gold trim
   { LV_COLOR_MAKE(0x2A,0x08,0x60), LV_COLOR_MAKE(0xC8,0x9E,0x20),
@@ -118,13 +120,15 @@ static WaitTheme themeFromColor(uint32_t rgb) {
     return t;
 }
 
-// Indexed by (int)WaitLevel. Defaults match RuntimeConfig::waitColors.
+// Indexed by (int)WaitLevel. Defaults come from waitdefaults.h (the single
+// source shared with RuntimeConfig::waitColors and StatusLed).
 static WaitTheme WAIT_THEMES[5] = {
-    themeFromColor(0x00E676), themeFromColor(0xFFD600),
-    themeFromColor(0xFF7043), themeFromColor(0xFF1744),
-    themeFromColor(0x18FFFF),
+    themeFromColor(WAIT_COLOR_DEFAULTS[0]), themeFromColor(WAIT_COLOR_DEFAULTS[1]),
+    themeFromColor(WAIT_COLOR_DEFAULTS[2]), themeFromColor(WAIT_COLOR_DEFAULTS[3]),
+    themeFromColor(WAIT_COLOR_DEFAULTS[4]),
 };
-static uint8_t WAIT_TH1 = 15, WAIT_TH2 = 30, WAIT_TH3 = 45;
+static uint8_t WAIT_TH1 = WAIT_TH_DEFAULTS[0], WAIT_TH2 = WAIT_TH_DEFAULTS[1],
+               WAIT_TH3 = WAIT_TH_DEFAULTS[2];
 
 // Legacy names — the T_* themes are used all over this file.
 #define T_GREEN  (WAIT_THEMES[(int)WaitLevel::Green])

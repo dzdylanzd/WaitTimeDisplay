@@ -46,6 +46,7 @@ private:
   void tickWaitTimeCycle(unsigned long now);
   void enterReconnecting();
   void tickReconnecting(unsigned long now);
+  void enterNoParksConfigured();
 
   bool allRidesClosed() const;
   void applyRideFilter();
@@ -104,7 +105,8 @@ private:
   unsigned long _closedParkStart   = 0;
 
   TrendStore    _trends;
-  uint8_t       _lastAppliedBrightness = 255;   // 255 = "not applied yet"
+  uint8_t       _lastAppliedBrightness = 0;
+  bool          _brightnessApplied     = false;  // false until the first apply
   unsigned long _lastBrightnessCheck   = 0;
   bool          _resetWarningActive    = false; // BOOT held ≥10 s, screen frozen
   bool          _lastAppliedFlip       = false; // LCD_Init leaves it unflipped

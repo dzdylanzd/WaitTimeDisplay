@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "waitlevel.h"
+#include "waitdefaults.h"
 
 // Onboard WS2812 RGB LED: mirrors the current ride's wait-level colour so
 // the wait severity is readable from across the room. Brightness follows the
@@ -22,8 +23,11 @@ private:
   bool    _isOff     = true;
   WaitLevel _lastLevel = WaitLevel::Green;
   uint8_t _lastBrt   = 255;
-  // Defaults match RuntimeConfig::waitColors (configmanager.h)
-  uint32_t _colors[5] = { 0x00E676, 0xFFD600, 0xFF7043, 0xFF1744, 0x18FFFF };
+  // Defaults come from waitdefaults.h (shared with RuntimeConfig::waitColors)
+  uint32_t _colors[5] = {
+    WAIT_COLOR_DEFAULTS[0], WAIT_COLOR_DEFAULTS[1], WAIT_COLOR_DEFAULTS[2],
+    WAIT_COLOR_DEFAULTS[3], WAIT_COLOR_DEFAULTS[4]
+  };
 };
 
 #endif // STATUSLED_H

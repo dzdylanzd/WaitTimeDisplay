@@ -67,6 +67,9 @@ TEST_CASE("Button: polling that skips straight past 20 s fires HoldReset") {
     Button b;
     b.update(true, 0); b.update(true, 40);
     CHECK(b.update(true, 30000) == ButtonEvent::HoldReset);    // no warning first
+    // _longFired is never set on this path (the state machine returns before
+    // reaching that check), so the release must still not leak a spurious
+    // Short — regression test for that gap.
     b.update(false, 31000);
     CHECK(b.update(false, 31040) == ButtonEvent::None);
 }

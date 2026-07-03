@@ -221,6 +221,8 @@ void AppStateManager::refreshRideData() {
     prevWait[i] = _rides[i].waitTime;
     prevOpen[i] = _rides[i].isOpen;
   }
+  int currentRideId = (prevCount > 0 && _currentRideIndex < prevCount)
+                       ? prevId[_currentRideIndex] : -1;
 
   if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) return;
 
@@ -229,7 +231,20 @@ void AppStateManager::refreshRideData() {
   applyRideDisplayOptions();
   _display.setRideCount(_rideCount);
   _display.setDataFreshness(0);
-  if (_rideCount > 0 && _currentRideIndex >= _rideCount) _currentRideIndex = 0;
+
+  // Wait-desc sorting can reorder rides between refreshes, so the same index
+  // may now point at a different ride — re-find the ride the user was
+  // actually looking at by id instead of just clamping the old index.
+  if (_rideCount == 0) {
+    _currentRideIndex = 0;
+  } else {
+    int found = -1;
+    for (int i = 0; i < _rideCount; i++) {
+      if (_rides[i].id == currentRideId) { found = i; break; }
+    }
+    _currentRideIndex = (found >= 0) ? found
+                       : (_currentRideIndex < _rideCount ? _currentRideIndex : 0);
+  }
 
   // NOTE: wait-desc sorting can reorder rides between refreshes; the name
   // diff below detects that as a structure change and repaints fully.
@@ -263,6 +278,16 @@ void AppStateManager::refreshRideData() {
 void AppStateManager::enterReconnecting() {
   _wifiTrouble = false;
   _display.showNoData(NoDataReason::WIFI_LOST);
+}
+
+// ==================================================================
+// NO_PARKS_CONFIGURED
+// ==================================================================
+
+void AppStateManager::enterNoParksConfigured() {
+  // Reached from the startup splash when no parks are set. Without this the
+  // stale splash would stay on screen (the tick handler is a no-op).
+  _display.showNoData(NoDataReason::NO_PARKS);
 }
 
 void AppStateManager::tickReconnecting(unsigned long now) {
@@ -316,9 +341,10 @@ void AppStateManager::transitionTo(SystemState newState) {
   if (newState != SystemState::WAIT_TIME_CYCLE) _led.off();
   if (newState == SystemState::STARTUP_INFO) _startupScreenShown = false;
   switch (newState) {
-    case SystemState::WIFI_CONFIG_PORTAL: enterWifiConfigPortal(); break;
-    case SystemState::WIFI_CONNECTING:    enterWifiConnecting();    break;
-    case SystemState::RECONNECTING:       enterReconnecting();      break;
+    case SystemState::WIFI_CONFIG_PORTAL:  enterWifiConfigPortal();   break;
+    case SystemState::WIFI_CONNECTING:     enterWifiConnecting();     break;
+    case SystemState::RECONNECTING:        enterReconnecting();       break;
+    case SystemState::NO_PARKS_CONFIGURED: enterNoParksConfigured();  break;
     default: break;
   }
 }
@@ -503,6 +529,7 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
       if (brt < 30) brt = 30;
       LCD_SetBacklight(brt);
       _lastAppliedBrightness = brt;
+      _brightnessApplied = true;
       if (_cfg.getConfig().ledEnabled) _led.showLevel(WaitLevel::Red, brt);
       _display.showFactoryResetWarning();
       return;
@@ -588,8 +615,9 @@ uint8_t AppStateManager::effectiveBrightness() const {
 
 void AppStateManager::applyBrightness(bool force) {
   uint8_t target = effectiveBrightness();
-  if (!force && target == _lastAppliedBrightness) return;
+  if (!force && _brightnessApplied && target == _lastAppliedBrightness) return;
   _lastAppliedBrightness = target;
+  _brightnessApplied = true;
   LCD_SetBacklight(target);
   updateLed();   // the LED brightness tracks the backlight
 }
@@ -635,6 +663,6 @@ void AppStateManager::updateLed() {
       : pickWaitLevel(_rides[_currentRideIndex].waitTime,
                       _rides[_currentRideIndex].isOpen,
                       cfg.waitTh1, cfg.waitTh2, cfg.waitTh3);
-  _led.showLevel(level, _lastAppliedBrightness == 255 ? _cfg.getConfig().brightness
-                                                      : _lastAppliedBrightness);
+  _led.showLevel(level, _brightnessApplied ? _lastAppliedBrightness
+                                            : _cfg.getConfig().brightness);
 }

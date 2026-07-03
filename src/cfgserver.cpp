@@ -347,8 +347,8 @@ const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Hal
 // Palette swatches — order and hexes must match PALETTES[] in src/display.cpp
 // (h=header, a=accent, p=ride panel; count: COLOR_PALETTE_COUNT).
 const PALETTE_DEFS=[
- {n:'Magic Night',h:'#2A0860',a:'#FFD466',p:'#160A34'},
- {n:'Deep Ocean',h:'#04386E',a:'#7DF3E8',p:'#06182E'},
+ {n:'Magic Night',h:'#2A0860',a:'#C89E20',p:'#160A34'},
+ {n:'Deep Ocean',h:'#04386E',a:'#22C8E0',p:'#06182E'},
  {n:'Sunset Ember',h:'#6E1A08',a:'#FF8C1A',p:'#2A0E06'},
  {n:'Forest Twilight',h:'#0C4A20',a:'#9AE22E',p:'#0A2012'},
  {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'}];
@@ -610,7 +610,7 @@ static bool mergePerParkJson(const String& existing, JsonObject incoming,
   out = "";
   if (merged.size() > 0) {
     serializeJson(merged, out);
-    if (out.length() > 1900) return false;    // NVS string budget
+    if (out.length() > NVS_JSON_MAX) return false;
   }
   return true;
 }
