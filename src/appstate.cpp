@@ -30,6 +30,20 @@ static constexpr unsigned long OTA_INSTALL_DISPLAY_MS = 600UL;
 // Consecutive successful wait-time fetches after an OTA update before
 // canceling the ESP-IDF app-rollback safety net (see OtaUpdater).
 static constexpr int OTA_CONFIRM_FETCH_COUNT = 3;
+// --- Fetch-failure self-healing -----------------------------------------
+// Fetches can keep failing while WiFi.status() still reports WL_CONNECTED:
+// a "zombie" association (router rebooted, lease lost) or a heap too
+// fragmented for another ~45 KB TLS session. Neither ever recovers on its
+// own, so escalate: after this many consecutive failures force a full WiFi
+// reconnect cycle (fixes the zombie case)...
+static constexpr int FETCH_FAIL_WIFI_CYCLE_STREAK = 4;
+// ...and if no fetch has succeeded for this long despite that, reboot.
+// All config lives in NVS, so a restart costs ~30 s and beats being stuck
+// on "No Ride Data" until someone pulls the plug.
+static constexpr unsigned long FETCH_FAIL_REBOOT_MS = 15UL * 60UL * 1000UL;
+// A fresh TLS handshake needs roughly 45 KB of free heap; below this every
+// future fetch is guaranteed to fail, so restart while we still can.
+static constexpr uint32_t MIN_FREE_HEAP_BYTES = 40000;
 
 AppStateManager* AppStateManager::_instance = nullptr;
 
@@ -59,6 +73,15 @@ void AppStateManager::update() {
   if (now - _lastBrightnessCheck >= BRIGHTNESS_CHECK_INTERVAL) {
     _lastBrightnessCheck = now;
     if (!_resetWarningActive) applyBrightness();
+    // Low-heap watchdog: once free heap can no longer hold a TLS session,
+    // the device is unrecoverable without a reboot — do it proactively.
+    uint32_t freeHeap = ESP.getFreeHeap();
+    if (!_resetWarningActive && freeHeap < MIN_FREE_HEAP_BYTES) {
+      Serial.printf("[recovery] free heap critically low (%u bytes) - restarting\n",
+                    (unsigned)freeHeap);
+      delay(100);  // let the log line flush
+      ESP.restart();
+    }
   }
 
   // The factory-reset warning freezes everything: no rotation, no refresh,
@@ -189,6 +212,31 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
     return;
   }
 
+  // Fetch-failure escalation (see the FETCH_FAIL_* constants). WiFi says
+  // connected (checked above) yet fetches keep failing: first force one
+  // full reconnect cycle per streak, and if the streak still isn't broken
+  // after 15 minutes, reboot — nothing else recovers an exhausted heap.
+  if (_fetchFailStreak >= FETCH_FAIL_WIFI_CYCLE_STREAK && !_wifiCycleTried) {
+    _wifiCycleTried = true;
+    _fetchFailStreakAtCycle = _fetchFailStreak;
+    Serial.printf("[recovery] %d consecutive fetch failures (heap %u) - cycling WiFi\n",
+                  _fetchFailStreak, (unsigned)ESP.getFreeHeap());
+    WiFi.disconnect();
+    _wifi.resetConnecting();
+    transitionTo(SystemState::RECONNECTING);
+    return;
+  }
+  // Reboot only after the reconnect cycle was tried AND at least one more
+  // fetch failed after it — a lone transient refresh failure (they're 15 min
+  // apart when stale data is still on screen) must never trigger a restart.
+  if (_wifiCycleTried && _fetchFailStreak > _fetchFailStreakAtCycle &&
+      now - _fetchFailSince >= FETCH_FAIL_REBOOT_MS) {
+    Serial.printf("[recovery] no successful fetch for %lu min - restarting\n",
+                  (now - _fetchFailSince) / 60000UL);
+    delay(100);  // let the log line flush
+    ESP.restart();
+  }
+
   if (_rideCount <= 0) {
     if (now - _lastApiFetch >= DATA_RETRY_INTERVAL) {
       _lastApiFetch = now;
@@ -211,7 +259,16 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
       _closedParkStart = now;
       updateLed();
     } else if (now - _closedParkStart >= _cfgClosedParkDisplayTime) {
-      advanceToNextPark();
+      if (cfg.enabledParkIds.size() > 1) {
+        advanceToNextPark();
+      } else if (now - _lastApiFetch >= _cfgApiRefreshInterval) {
+        // Single park, everything closed: there is nothing to rotate to, so
+        // re-check at the normal API cadence instead of re-fetching every
+        // closed-park interval (~20 s) all night — thousands of needless TLS
+        // sessions per night fragment the heap and hammer queue-times.com.
+        _lastApiFetch = now;
+        loadParkData();
+      }
     }
     if (now - _lastTimeUpdate >= _cfgTimeUpdateInterval) {
       _display.showClosedPark(_currentParkName);
@@ -467,7 +524,13 @@ void AppStateManager::annotateRides() {
 // freshness metadata. Shared by loadParkData() and refreshRideData() so the
 // two callers can't drift on what "process the fetched rides" means.
 bool AppStateManager::fetchAndProcessRideData() {
-  if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) return false;
+  if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) {
+    if (_fetchFailStreak == 0) _fetchFailSince = millis();
+    _fetchFailStreak++;
+    return false;
+  }
+  _fetchFailStreak = 0;
+  _wifiCycleTried  = false;
   applyRideFilter();
   annotateRides();
   applyRideDisplayOptions();

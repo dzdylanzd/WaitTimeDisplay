@@ -118,6 +118,20 @@ to reconfigure WiFi.
 them on a *new* save (`WiFiManager::runCaptivePortal()` blocks on
 `_portalSaved`, not `isConfigured()`); a factory reset wipes them.
 
+**Fetch-failure self-healing** (`FETCH_FAIL_*` constants in appstate.cpp):
+fetches can keep failing while `WiFi.status()` still reports connected
+(zombie association, or heap too fragmented for another ~45 KB TLS session).
+`fetchAndProcessRideData()` tracks a consecutive-failure streak; after 4
+failures `tickWaitTimeCycle()` forces one full WiFi reconnect cycle
+(`WiFi.disconnect()` → RECONNECTING), and if the streak still isn't broken
+15 min after it started (with at least one post-reconnect failure), the
+device reboots — config is all in NVS, so a restart beats sitting on "No
+Ride Data" until someone pulls the plug. A separate low-heap watchdog in
+`update()` restarts proactively when free heap drops below 40 KB. Also, a
+single-park config with all rides closed re-fetches at the API refresh
+interval, not every closed-park rotation (~20 s), to avoid all-night TLS
+churn.
+
 `AppStateManager::update()` is called every `loop()`. Config-web-server saves are detected there before the state switch and trigger `restartCycle()`.
 
 ### LVGL display design

@@ -122,6 +122,13 @@ private:
   unsigned long _cfgTimeUpdateInterval    = DEFAULT_TIME_UPDATE_INTERVAL;
 
   int          _parkLoadFailures  = 0;
+  // Self-healing for the "every fetch fails while WiFi still claims to be
+  // connected" failure modes (zombie association, TLS heap exhaustion):
+  // consecutive failed fetches and when the current failure streak started.
+  int           _fetchFailStreak = 0;
+  unsigned long _fetchFailSince  = 0;
+  bool          _wifiCycleTried  = false;  // one forced reconnect per streak
+  int           _fetchFailStreakAtCycle = 0;  // streak value when it was tried
   bool         _startupScreenShown = false;
   bool         _showingClosedPark  = false;
   unsigned long _closedParkStart   = 0;

@@ -25,6 +25,9 @@ struct EspClass {
         printf("[sim] ESP.restart() — exiting (relaunch to reboot)\n");
         std::exit(0);
     }
+    // Desktop has effectively unlimited heap; report "plenty free" so the
+    // firmware's low-heap self-reboot guard never fires in the sim.
+    uint32_t getFreeHeap() { return 250000; }
 };
 inline EspClass ESP;
 
