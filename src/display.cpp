@@ -131,18 +131,33 @@ static const UiPalette* PAL = &PALETTES[0];
 // Wait-time themes: { bgTop, bgBot (gradient), accent }
 //
 // The accent of each level is user-configurable (RuntimeConfig::waitColors,
-// pushed in via setWaitConfig); the dark panel backgrounds are DERIVED from
-// the accent so any picked colour gets matching backgrounds automatically.
-// The thresholds are user-configurable too (waitTh1..3).
+// pushed in via setWaitConfig); the panel backgrounds are DERIVED from the
+// accent so any picked colour gets matching backgrounds automatically — a dark
+// tint under dark palettes, or a light wash of the palette's paper base under a
+// light palette (see themeFromColor + s_paletteLight). The thresholds are
+// user-configurable too (waitTh1..3).
 // ---------------------------------------------------------------------------
 struct WaitTheme { lv_color_t bgTop; lv_color_t bgBot; lv_color_t accent; };
 
+// True while a light ("paper") palette is active — the wait panel then derives
+// a LIGHT background instead of the dark tint. Set by applyPalette().
+static bool s_paletteLight = false;
+
 static WaitTheme themeFromColor(uint32_t rgb) {
     uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
+    lv_color_t accent = lv_color_make(r, g, b);
     WaitTheme t;
-    t.bgTop  = lv_color_make(r * 18 / 255, g * 18 / 255, b * 18 / 255);  // ~7%
-    t.bgBot  = lv_color_make(r * 30 / 255, g * 30 / 255, b * 30 / 255);  // ~12%
-    t.accent = lv_color_make(r, g, b);
+    if (s_paletteLight) {
+        // Light palette: wash a little accent into the palette's light panel
+        // base so the wait panel reads light. The number keeps the full
+        // configured accent colour (t.accent below), unchanged.
+        t.bgTop = lv_color_mix(accent, PAL->rideBg, 30);   // ~12% accent
+        t.bgBot = lv_color_mix(accent, PAL->rideBg, 52);   // ~20% accent
+    } else {
+        t.bgTop = lv_color_make(r * 18 / 255, g * 18 / 255, b * 18 / 255);  // ~7%
+        t.bgBot = lv_color_make(r * 30 / 255, g * 30 / 255, b * 30 / 255);  // ~12%
+    }
+    t.accent = accent;
     return t;
 }
 
@@ -155,6 +170,16 @@ static WaitTheme WAIT_THEMES[5] = {
 };
 static uint8_t WAIT_TH1 = WAIT_TH_DEFAULTS[0], WAIT_TH2 = WAIT_TH_DEFAULTS[1],
                WAIT_TH3 = WAIT_TH_DEFAULTS[2];
+
+// Raw configured wait colours (0xRRGGBB), retained so the wait-panel
+// backgrounds can be re-derived whenever EITHER the colours (setWaitConfig) or
+// the palette lightness (applyPalette) changes.
+static uint32_t s_waitColors[5] = {
+    WAIT_COLOR_DEFAULTS[0], WAIT_COLOR_DEFAULTS[1], WAIT_COLOR_DEFAULTS[2],
+    WAIT_COLOR_DEFAULTS[3], WAIT_COLOR_DEFAULTS[4] };
+static void rebuildWaitThemes() {
+    for (int i = 0; i < 5; i++) WAIT_THEMES[i] = themeFromColor(s_waitColors[i]);
+}
 
 // Legacy names — the T_* themes are used all over this file.
 #define T_GREEN  (WAIT_THEMES[(int)WaitLevel::Green])
@@ -632,6 +657,12 @@ void DisplayController::applyPalette(uint8_t paletteId) {
     if (paletteId >= UI_PALETTE_COUNT) paletteId = 0;
     PAL = &PALETTES[paletteId];
 
+    // A light ("paper") palette flips the wait panel to a light background (the
+    // number keeps its configured colour). Re-derive here too, so a palette-only
+    // change updates it even without a following setWaitConfig() call.
+    s_paletteLight = lv_color_brightness(PAL->rideBg) > 150;
+    rebuildWaitThemes();
+
     // Every palette-coloured widget that isn't special-cased below (the ride
     // index has a favorite-conditional colour; the freshness separator is
     // re-derived via setDataFreshness). Adding a new plain palette-coloured
@@ -684,7 +715,8 @@ void DisplayController::setWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
     WAIT_TH1 = th1;
     WAIT_TH2 = th2;
     WAIT_TH3 = th3;
-    for (int i = 0; i < 5; i++) WAIT_THEMES[i] = themeFromColor(colors[i]);
+    for (int i = 0; i < 5; i++) s_waitColors[i] = colors[i];
+    rebuildWaitThemes();
 }
 
 // ---------------------------------------------------------------------------
