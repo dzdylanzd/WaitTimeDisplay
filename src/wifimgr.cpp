@@ -71,23 +71,38 @@ static String buildConfigPage(const String& msg, const String& storedSsid) {
   String page = R"(
 <html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
 <style>
-*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,sans-serif;}
-body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;}
-.card{background:#16213e;border-radius:16px;padding:2rem;width:90%;max-width:400px;box-shadow:0 8px 32px rgba(0,0,0,0.4);}
-h1{color:#e94560;font-size:1.5rem;margin-bottom:0.5rem;text-align:center;}
-p{color:#a0a0b0;font-size:0.9rem;margin-bottom:1.5rem;text-align:center;}
-label{color:#ccc;font-size:0.85rem;display:block;margin-bottom:0.25rem;}
-input[type=text],input[type=password]{width:100%;padding:12px;margin-bottom:1rem;border:1px solid #333;border-radius:8px;background:#0f3460;color:#fff;font-size:1rem;outline:none;}
-input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
-.btn{width:100%;padding:14px;background:#e94560;color:#fff;border:none;border-radius:8px;font-size:1.1rem;cursor:pointer;transition:opacity 0.2s;}
-.btn:hover{opacity:0.85;}
-.msg{text-align:center;color:#4ecca3;margin-bottom:1rem;font-size:0.9rem;}
-.err{color:#e94560;}
+:root{--bg1:#e9eef7;--bg2:#dde6f4;--card:rgba(255,255,255,.72);--brd:rgba(28,40,80,.14);
+ --ink:#182233;--mut:#5c6780;--field:#fff;--fieldbrd:#cdd6e6;--accent:#6a58ee;
+ --ok:#12b886;--warn:#c07d0a;--shadow:0 16px 40px rgba(30,50,90,.16);color-scheme:light;}
+@media(prefers-color-scheme:dark){:root{--bg1:#0d1330;--bg2:#0a0f24;--card:rgba(26,30,58,.66);
+ --brd:rgba(255,255,255,.12);--ink:#eef1fb;--mut:#a6abc8;--field:rgba(255,255,255,.06);
+ --fieldbrd:rgba(255,255,255,.17);--accent:#8f7cff;--ok:#3ad9a0;--warn:#f0b34a;
+ --shadow:0 18px 44px rgba(0,0,0,.5);color-scheme:dark;}}
+*{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;}
+body{background:radial-gradient(900px 500px at 50% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 60%),linear-gradient(var(--bg1),var(--bg2));display:flex;justify-content:center;align-items:center;min-height:100vh;padding:16px;}
+.card{background:var(--card);backdrop-filter:blur(12px);border:1px solid var(--brd);border-radius:20px;padding:1.8rem;width:100%;max-width:400px;box-shadow:var(--shadow);}
+h1{color:var(--ink);font-size:1.5rem;margin-bottom:0.4rem;text-align:center;font-weight:800;}
+p{color:var(--mut);font-size:0.9rem;margin-bottom:1.4rem;text-align:center;}
+label{color:var(--ink);font-size:0.82rem;font-weight:600;display:block;margin-bottom:0.3rem;}
+input[type=text],input[type=password],select{width:100%;padding:12px;margin-bottom:1rem;border:1px solid var(--fieldbrd);border-radius:10px;background:var(--field);color:var(--ink);font-size:1rem;outline:none;}
+#ssidPick{margin-bottom:0.6rem;}
+input[type=text]:focus,input[type=password]:focus,select:focus{border-color:var(--accent);}
+.btn{width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:1.05rem;font-weight:700;cursor:pointer;transition:filter .2s,transform .1s;}
+.btn:hover{filter:brightness(1.08);}
+.btn:active{transform:translateY(1px);}
+.msg{text-align:center;color:var(--ok);margin-bottom:1rem;font-size:0.9rem;}
+.err{color:#e5484d;}
+.hint{color:var(--warn);font-size:0.8rem;text-align:center;margin-top:-1rem;margin-bottom:1.4rem;}
+.row{display:flex;justify-content:space-between;align-items:center;margin:-0.5rem 0 1rem;}
+.small{color:var(--mut);font-size:0.8rem;}
+.link{background:none;border:none;color:var(--accent);font-size:0.8rem;cursor:pointer;padding:0;font-weight:600;}
+.showpw{display:flex;align-items:center;gap:6px;color:var(--mut);font-size:0.8rem;margin:-0.5rem 0 1rem;cursor:pointer;}
+.showpw input{width:auto;margin:0;}
 </style></head><body>
 <div class='card'>
 <h1>&#127979; QueueWatch</h1>
 <p>Enter your WiFi credentials to continue</p>
-<p style='color:#e9a23b;font-size:0.8rem;margin-top:-1rem;margin-bottom:1.5rem;text-align:center;'>&#128246; Only 2.4 GHz Wi-Fi networks are supported.</p>
+<p class='hint'>&#128246; Only 2.4 GHz Wi-Fi networks are supported.</p>
 )";
   if (msg.length() > 0) {
     String cssClass = (msg.indexOf("Saved") >= 0) ? "msg" : "msg err";
@@ -102,18 +117,18 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
   page += R"(
 <form action='/save' method='POST'>
 <label for='ssidPick'>WiFi Name (SSID)</label>
-<select id='ssidPick' onchange="if(this.value){document.getElementById('ssid').value=this.value;}" style='width:100%;padding:12px;margin-bottom:0.6rem;border:1px solid #333;border-radius:8px;background:#0f3460;color:#fff;font-size:1rem;outline:none;'>
+<select id='ssidPick' onchange="if(this.value){document.getElementById('ssid').value=this.value;}">
 <option value=''>&#128246; Tap &ldquo;Rescan&rdquo; to find networks&hellip;</option>
 </select>
 <input type='text' id='ssid' name='ssid' placeholder='...or type the network name' autocomplete='off' required>
-<div style='display:flex;justify-content:space-between;align-items:center;margin:-0.5rem 0 1rem;'>
-<span id='scanStatus' style='color:#a0a0b0;font-size:0.8rem;'></span>
-<button type='button' id='scanBtn' onclick='scanWifi()' style='background:none;border:none;color:#4ecca3;font-size:0.8rem;cursor:pointer;padding:0;'>&#128260; Rescan</button>
+<div class='row'>
+<span id='scanStatus' class='small'></span>
+<button type='button' id='scanBtn' onclick='scanWifi()' class='link'>&#128260; Rescan</button>
 </div>
 <label for='pass'>Password</label>
 <input type='password' id='pass' name='pass' placeholder='Enter password'>
-<label style='display:flex;align-items:center;gap:6px;color:#a0a0b0;font-size:0.8rem;margin:-0.5rem 0 1rem;cursor:pointer;'>
-<input type='checkbox' style='width:auto;margin:0;' onclick="document.getElementById('pass').type=this.checked?'text':'password';"> Show password</label>
+<label class='showpw'>
+<input type='checkbox' onclick="document.getElementById('pass').type=this.checked?'text':'password';"> Show password</label>
 <button class='btn' type='submit'>Connect</button>
 </form>
 </div>
@@ -145,11 +160,14 @@ window.addEventListener('load',scanWifi);
 static String buildSuccessPage(const String& ssid) {
   return String(R"(
 <html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
-<style>*{margin:0;padding:0;font-family:-apple-system,sans-serif;}
-body{background:#1a1a2e;display:flex;justify-content:center;align-items:center;min-height:100vh;}
-.card{background:#16213e;border-radius:16px;padding:2rem;width:90%;max-width:400px;text-align:center;}
-h1{color:#4ecca3;font-size:1.5rem;margin-bottom:1rem;}
-p{color:#a0a0b0;margin-bottom:1rem;}
+<style>:root{--bg1:#e9eef7;--bg2:#dde6f4;--card:rgba(255,255,255,.72);--brd:rgba(28,40,80,.14);--ink:#182233;--mut:#5c6780;--ok:#12b886;--shadow:0 16px 40px rgba(30,50,90,.16);color-scheme:light;}
+@media(prefers-color-scheme:dark){:root{--bg1:#0d1330;--bg2:#0a0f24;--card:rgba(26,30,58,.66);--brd:rgba(255,255,255,.12);--ink:#eef1fb;--mut:#a6abc8;--ok:#3ad9a0;--shadow:0 18px 44px rgba(0,0,0,.5);color-scheme:dark;}}
+*{margin:0;padding:0;box-sizing:border-box;font-family:-apple-system,'Segoe UI',Roboto,sans-serif;}
+body{background:radial-gradient(900px 500px at 50% -10%,color-mix(in srgb,var(--ok) 20%,transparent),transparent 60%),linear-gradient(var(--bg1),var(--bg2));display:flex;justify-content:center;align-items:center;min-height:100vh;padding:16px;}
+.card{background:var(--card);backdrop-filter:blur(12px);border:1px solid var(--brd);border-radius:20px;padding:2rem;width:100%;max-width:400px;text-align:center;box-shadow:var(--shadow);}
+h1{color:var(--ok);font-size:1.5rem;margin-bottom:1rem;font-weight:800;}
+p{color:var(--mut);margin-bottom:1rem;line-height:1.5;}
+strong{color:var(--ink);}
 </style></head><body><div class='card'>
 <h1>&#10003; Saved!</h1>
 <p>Attempting to connect to <strong>)") + htmlEscape(ssid) + R"(</strong>&hellip;</p>
