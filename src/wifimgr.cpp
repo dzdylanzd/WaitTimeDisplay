@@ -1,6 +1,8 @@
 #include "wifimgr.h"
 #include "config.h"
 #include <WiFi.h>
+#include <vector>
+#include <algorithm>
 
 #if __has_include(<esp_task_wdt.h>)
 #include <esp_task_wdt.h>
@@ -39,6 +41,32 @@ static String htmlEscape(const String& in) {
   return out;
 }
 
+// Escape a string for embedding inside a JSON string literal (the /scan
+// endpoint returns nearby SSIDs, which are attacker-controllable and may
+// contain quotes, backslashes or control bytes).
+static String jsonEscape(const String& in) {
+  String out;
+  out.reserve(in.length() + 8);
+  for (size_t i = 0; i < in.length(); i++) {
+    char c = in[i];
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"':  out += "\\\""; break;
+      case '\n': out += "\\n";  break;
+      case '\r': out += "\\r";  break;
+      case '\t': out += "\\t";  break;
+      default:
+        if ((unsigned char)c < 0x20) {
+          char b[8]; snprintf(b, sizeof(b), "\\u%04x", (unsigned char)c);
+          out += b;
+        } else {
+          out += c;
+        }
+    }
+  }
+  return out;
+}
+
 static String buildConfigPage(const String& msg, const String& storedSsid) {
   String page = R"(
 <html><head><meta name='viewport' content='width=device-width,initial-scale=1'>
@@ -59,6 +87,7 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
 <div class='card'>
 <h1>&#127979; QueueWatch</h1>
 <p>Enter your WiFi credentials to continue</p>
+<p style='color:#e9a23b;font-size:0.8rem;margin-top:-1rem;margin-bottom:1.5rem;text-align:center;'>&#128246; Only 2.4 GHz Wi-Fi networks are supported.</p>
 )";
   if (msg.length() > 0) {
     String cssClass = (msg.indexOf("Saved") >= 0) ? "msg" : "msg err";
@@ -73,12 +102,39 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
   page += R"(
 <form action='/save' method='POST'>
 <label for='ssid'>WiFi Name (SSID)</label>
-<input type='text' id='ssid' name='ssid' placeholder='Enter network name' required>
+<input type='text' list='ssids' id='ssid' name='ssid' placeholder='Enter or pick a network' autocomplete='off' required>
+<datalist id='ssids'></datalist>
+<div style='display:flex;justify-content:space-between;align-items:center;margin:-0.5rem 0 1rem;'>
+<span id='scanStatus' style='color:#a0a0b0;font-size:0.8rem;'></span>
+<button type='button' id='scanBtn' onclick='scanWifi()' style='background:none;border:none;color:#4ecca3;font-size:0.8rem;cursor:pointer;padding:0;'>&#128260; Scan networks</button>
+</div>
 <label for='pass'>Password</label>
 <input type='password' id='pass' name='pass' placeholder='Enter password'>
+<label style='display:flex;align-items:center;gap:6px;color:#a0a0b0;font-size:0.8rem;margin:-0.5rem 0 1rem;cursor:pointer;'>
+<input type='checkbox' style='width:auto;margin:0;' onclick="document.getElementById('pass').type=this.checked?'text':'password';"> Show password</label>
 <button class='btn' type='submit'>Connect</button>
 </form>
-</div></body></html>
+</div>
+<script>
+async function scanWifi(){
+  var btn=document.getElementById('scanBtn'),st=document.getElementById('scanStatus');
+  btn.disabled=true;st.textContent='Scanning...';
+  try{
+    var res=await fetch('/scan');var nets=await res.json();
+    var dl=document.getElementById('ssids');dl.innerHTML='';
+    nets.forEach(function(n){
+      var o=document.createElement('option');
+      o.value=n.ssid;
+      o.label=(n.secure?'🔒 ':'')+n.ssid+' ('+n.rssi+' dBm)';
+      dl.appendChild(o);
+    });
+    st.textContent=nets.length?(nets.length+' network'+(nets.length>1?'s':'')+' found'):'No networks found';
+  }catch(e){st.textContent='Scan failed - type the name instead';}
+  btn.disabled=false;
+}
+window.addEventListener('load',scanWifi);
+</script>
+</body></html>
 )";
   return page;
 }
@@ -125,7 +181,9 @@ void WiFiManager::clearCredentials() {
 }
 
 void WiFiManager::startAP() {
-  WiFi.mode(WIFI_AP);
+  // AP_STA (not plain AP) so the /scan endpoint can run WiFi.scanNetworks()
+  // on the STA interface while the SoftAP stays up for the config client.
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAP(AP_SSID, AP_PASS);
   delay(200);
 }
@@ -137,6 +195,44 @@ void WiFiManager::startDNSServer() {
 void WiFiManager::startHTTPServer() {
   _webServer.on("/", [this]() {
     _webServer.send(200, "text/html", buildConfigPage("", _ssid));
+  });
+  _webServer.on("/scan", HTTP_GET, [this]() {
+    // Blocking scan (~2-4 s) — consistent with this codebase's synchronous-HTTP
+    // convention. Returns nearby networks as JSON, de-duplicated by SSID
+    // (keeping the strongest signal) and sorted by RSSI descending.
+    struct Net { String ssid; int32_t rssi; bool secure; };
+    int n = WiFi.scanNetworks();
+    std::vector<Net> nets;
+    for (int i = 0; i < n; i++) {
+      String ssid = WiFi.SSID(i);
+      if (ssid.length() == 0) continue;   // hidden network
+      int32_t rssi = WiFi.RSSI(i);
+      bool secure = (WiFi.encryptionType(i) != WIFI_AUTH_OPEN);
+      bool merged = false;
+      for (size_t j = 0; j < nets.size(); j++) {
+        if (nets[j].ssid == ssid) {
+          if (rssi > nets[j].rssi) { nets[j].rssi = rssi; nets[j].secure = secure; }
+          merged = true;
+          break;
+        }
+      }
+      if (!merged) nets.push_back({ ssid, rssi, secure });
+    }
+    WiFi.scanDelete();
+    std::sort(nets.begin(), nets.end(),
+              [](const Net& a, const Net& b) { return a.rssi > b.rssi; });
+
+    String json = "[";
+    for (size_t i = 0; i < nets.size(); i++) {
+      if (i > 0) json += ",";
+      json += "{\"ssid\":\"" + jsonEscape(nets[i].ssid) + "\",\"rssi\":";
+      json += String(nets[i].rssi);
+      json += ",\"secure\":";
+      json += nets[i].secure ? "true" : "false";
+      json += "}";
+    }
+    json += "]";
+    _webServer.send(200, "application/json", json);
   });
   _webServer.on("/save", HTTP_POST, [this]() {
     String ssid = _webServer.arg("ssid");
