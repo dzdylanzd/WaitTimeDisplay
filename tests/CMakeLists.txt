@@ -30,6 +30,7 @@ add_executable(queuewatch_tests
     ${TESTS_DIR}/test_cfgserver.cpp
     ${TESTS_DIR}/test_tzhelper.cpp
     ${TESTS_DIR}/test_otaupdater_json.cpp
+    ${TESTS_DIR}/test_versioncompare.cpp
     ${SRC_DIR}/configmanager.cpp
     ${SRC_DIR}/queueapi.cpp
     ${SRC_DIR}/httpjson.cpp

@@ -1,6 +1,7 @@
 #include "otaupdater.h"
 #include "config.h"
 #include "httpjson.h"
+#include "versioncompare.h"
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
@@ -37,11 +38,10 @@ bool OtaUpdater::checkForUpdate(String& outVersion, String& outAssetUrl) {
   String version, assetUrl;
   if (!extractLatestRelease(doc.as<JsonVariantConst>(), version, assetUrl)) return false;
 
-  String normalizedTag = version;
-  if (normalizedTag.length() > 0 && (normalizedTag[0] == 'v' || normalizedTag[0] == 'V')) {
-    normalizedTag.remove(0, 1);
-  }
-  if (normalizedTag == FIRMWARE_VERSION) return false;   // already up to date
+  // Only offer an update for a strictly newer version — never an equal build
+  // (regardless of 'v'-prefix formatting) nor an older one, which a
+  // mis-tagged "latest" release on GitHub could otherwise trigger.
+  if (!isNewerVersion(FIRMWARE_VERSION, version)) return false;
 
   outVersion  = version;
   outAssetUrl = assetUrl;
