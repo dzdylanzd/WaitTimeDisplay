@@ -18,7 +18,7 @@ All scripts are at the **repo root** — double-click or run from any terminal:
 |---|---|
 | `build_sim.bat` | Build the desktop simulator (first run configures CMake) |
 | `run_sim.bat` | Launch the simulator window |
-| `test.bat` | Build and run all 79 unit tests |
+| `test.bat` | Build and run all unit tests |
 | `clean_all.bat` | Delete `sim/build/` and `tests/build/` |
 
 > Simulator config UI: **http://localhost:8080**  
@@ -40,6 +40,22 @@ pio run --target upload
 # Serial monitor
 pio device monitor
 ```
+
+### OTA releases
+
+`release.ps1` (repo root) bumps `FIRMWARE_VERSION` in `src/config.h`, builds,
+commits + tags + pushes, and publishes a GitHub Release with `firmware.bin`
+attached, so devices running `OtaUpdater`'s "Check for update" can find it:
+
+```powershell
+.\release.ps1 1.3.0
+```
+
+Needs a GitHub token (fine-grained, "Contents: Read and write" on this repo)
+in `$env:GITHUB_TOKEN`, or it prompts for one. The repo must stay **public**
+for this to work — the device's OTA check is deliberately unauthenticated
+(no token embedded in firmware), so a private repo's releases are invisible
+to it.
 
 Required libraries are declared in `platformio.ini` and fetched automatically by PlatformIO:
 - `lvgl/lvgl @ ^8.3.11` — GUI framework
