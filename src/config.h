@@ -1,11 +1,11 @@
-#ifndef CONFIG_H
+﻿#ifndef CONFIG_H
 #define CONFIG_H
 
 #include <stdint.h>
 
 // ----------- Storage -----------
 // Shared NVS namespace for ConfigManager (parks/timings/display settings)
-// AND WiFiManager (credentials) — a factory reset wipes both by clearing
+// AND WiFiManager (credentials) â€” a factory reset wipes both by clearing
 // this one namespace, so the two must agree on the name.
 constexpr const char* NVS_NAMESPACE = "queuewatch";
 
@@ -13,7 +13,7 @@ constexpr const char* NVS_NAMESPACE = "queuewatch";
 // Bumped manually per release; compared against GitHub Releases' tag_name
 // (see OtaUpdater) to decide whether an update is available. Keep in sync
 // with the git tag pushed for each release (e.g. "v1.0.0").
-constexpr const char* FIRMWARE_VERSION = "1.2.0";
+constexpr const char* FIRMWARE_VERSION = "1.2.1";
 
 // ----------- TFT pins (Waveshare ESP32-C6-LCD-1.47) -----------
 // These match lcd_st7789.h but are kept here for modules that need them.
@@ -26,7 +26,7 @@ constexpr const char* FIRMWARE_VERSION = "1.2.0";
 
 // ----------- Other onboard peripherals -----------
 #define RGB_LED_PIN   8   // WS2812 (Waveshare ESP32-C6-LCD-1.47 onboard LED)
-#define BOOT_BTN_PIN  9   // BOOT button, active-low. Strapping pin — safe to
+#define BOOT_BTN_PIN  9   // BOOT button, active-low. Strapping pin â€” safe to
                           // read with INPUT_PULLUP at runtime (matches its
                           // boot-time default state).
 
