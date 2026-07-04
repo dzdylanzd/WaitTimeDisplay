@@ -50,6 +50,29 @@ if ($existingTag) {
 }
 
 # ---------------------------------------------------------------------------
+# 0b. Gather release notes: every commit since the previous release tag.
+# Done BEFORE the version-bump commit below, so the notes describe the real
+# changes in this release, not the bump commit the script is about to add.
+# ---------------------------------------------------------------------------
+$prevTag = git describe --tags --abbrev=0
+if ($LASTEXITCODE -eq 0 -and $prevTag) {
+    $logRange   = "$prevTag..HEAD"
+    $notesTitle = "Changes since $prevTag"
+} else {
+    # No previous tag (first release) -- list the whole history.
+    $logRange   = "HEAD"
+    $notesTitle = "Changes"
+}
+$commitLines = git log $logRange --no-merges --pretty=format:"- %s"
+if ($commitLines) {
+    $releaseNotes = "## $notesTitle`n`n" + ($commitLines -join "`n")
+} else {
+    $releaseNotes = "## $notesTitle`n`n_No code changes since the previous release._"
+}
+Write-Host "Release notes:" -ForegroundColor Cyan
+Write-Host $releaseNotes
+
+# ---------------------------------------------------------------------------
 # 1. Bump FIRMWARE_VERSION in config.h
 # ---------------------------------------------------------------------------
 $content = Get-Content $configPath -Raw
@@ -92,7 +115,7 @@ Write-Host "Pushed commit and tag $tag" -ForegroundColor Cyan
 # 4. Create the GitHub release + upload firmware.bin
 # ---------------------------------------------------------------------------
 $headers = @{ Authorization = "token $env:GITHUB_TOKEN"; Accept = "application/vnd.github+json" }
-$releaseBody = @{ tag_name = $tag; name = $tag; draft = $false; prerelease = $false } | ConvertTo-Json
+$releaseBody = @{ tag_name = $tag; name = $tag; body = $releaseNotes; draft = $false; prerelease = $false } | ConvertTo-Json
 
 try {
     $release = Invoke-RestMethod -Method Post -Uri "https://api.github.com/repos/$repo/releases" `
