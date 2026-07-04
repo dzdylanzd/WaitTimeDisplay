@@ -71,34 +71,67 @@ static const char PROGMEM CONFIG_HTML[] = R"rawliteral(
 <title>QueueWatch Config</title>
 <style>
 :root{
- --bg:#0b0a1a;--card:#141230;--card2:#1a1740;--input:#1c1940;
- --border:#2b2660;--border2:#3a3480;
- --accent:#7c5cff;--accent2:#a58cff;--gold:#ffd36b;
- --text:#ecebfa;--muted:#948dc2;
- --green:#00e676;--amber:#ffd600;--orange:#ff7a45;--red:#ff2d5e;--teal:#25e6e6;
+ /* Daylight Glass — light theme (default). --accent/--accent2 are set live
+    from the selected palette (see applyAccent) so they persist across themes. */
+ --bg:#eef1f7;--bg2:#e3eaf6;
+ --card:#ffffff;--card2:rgba(120,140,190,.14);
+ --surface:rgba(255,255,255,.72);--input:#ffffff;--scrim:rgba(255,255,255,.72);
+ --border:rgba(28,40,80,.12);--border2:rgba(28,40,80,.22);
+ --accent:#6a58ee;--accent2:#8f7cff;--gold:#dca022;
+ --text:#182233;--muted:#5c6780;--knob:#ffffff;--knob-off:#c2ccdd;
+ --green:#12b886;--amber:#d8940f;--orange:#e8631a;--red:#e5484d;--teal:#0a9bb4;
+ --shadow:0 10px 30px rgba(30,50,90,.12);--blur:blur(10px);color-scheme:light;
+}
+@media(prefers-color-scheme:dark){:root{
+ --bg:#0b0a14;--bg2:#08070f;--card:#15131f;--card2:rgba(255,255,255,.07);
+ --surface:rgba(28,26,44,.60);--input:rgba(255,255,255,.05);--scrim:rgba(11,10,20,.80);
+ --border:rgba(255,255,255,.10);--border2:rgba(255,255,255,.17);
+ --gold:#ffd36b;--text:#ecebfa;--muted:#9a94ba;--knob:#f2f0ff;--knob-off:#4a4570;
+ --green:#00e676;--amber:#ffd21f;--orange:#ff7a45;--red:#ff466b;--teal:#25e6e6;
+ --shadow:0 12px 34px rgba(0,0,0,.5);color-scheme:dark;
+}}
+:root[data-theme="light"]{
+ --bg:#eef1f7;--bg2:#e3eaf6;--card:#ffffff;--card2:rgba(120,140,190,.14);
+ --surface:rgba(255,255,255,.72);--input:#ffffff;--scrim:rgba(255,255,255,.72);
+ --border:rgba(28,40,80,.12);--border2:rgba(28,40,80,.22);
+ --gold:#dca022;--text:#182233;--muted:#5c6780;--knob:#ffffff;--knob-off:#c2ccdd;
+ --green:#12b886;--amber:#d8940f;--orange:#e8631a;--red:#e5484d;--teal:#0a9bb4;
+ --shadow:0 10px 30px rgba(30,50,90,.12);color-scheme:light;
+}
+:root[data-theme="dark"]{
+ --bg:#0b0a14;--bg2:#08070f;--card:#15131f;--card2:rgba(255,255,255,.07);
+ --surface:rgba(28,26,44,.60);--input:rgba(255,255,255,.05);--scrim:rgba(11,10,20,.80);
+ --border:rgba(255,255,255,.10);--border2:rgba(255,255,255,.17);
+ --gold:#ffd36b;--text:#ecebfa;--muted:#9a94ba;--knob:#f2f0ff;--knob-off:#4a4570;
+ --green:#00e676;--amber:#ffd21f;--orange:#ff7a45;--red:#ff466b;--teal:#25e6e6;
+ --shadow:0 12px 34px rgba(0,0,0,.5);color-scheme:dark;
 }
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif}
 html{scroll-behavior:smooth}
 .section{scroll-margin-top:64px}
-.jumpnav{position:sticky;top:0;z-index:40;margin:-20px -16px 14px;padding:10px 16px;background:rgba(11,10,26,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
+.jumpnav{position:sticky;top:0;z-index:40;margin:-20px -16px 14px;padding:10px 16px;background:var(--scrim);backdrop-filter:blur(8px);border-bottom:1px solid var(--border)}
 .jumpin{max-width:760px;margin:0 auto;display:flex;gap:8px;overflow-x:auto;scrollbar-width:none}
 .jumpin::-webkit-scrollbar{display:none}
 .jumpin a{flex:none;color:var(--text);text-decoration:none;font-size:.8rem;font-weight:600;padding:7px 13px;border-radius:20px;background:var(--input);border:1px solid var(--border2);transition:border-color .15s,background .15s}
 .jumpin a:hover{border-color:var(--accent);background:var(--card2)}
-body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -8%,#2a1e5e 0%,rgba(11,10,26,0) 60%);color:var(--text);min-height:100vh;padding:20px 16px 120px;-webkit-font-smoothing:antialiased}
+body{background:radial-gradient(1100px 560px at 50% -8%,color-mix(in srgb,var(--accent) 20%,transparent) 0%,transparent 62%),linear-gradient(var(--bg),var(--bg2));color:var(--text);min-height:100vh;padding:20px 16px 120px;-webkit-font-smoothing:antialiased}
 .container{max-width:760px;margin:0 auto}
 
-.hero{background:linear-gradient(135deg,#3a2b86 0%,#221153 60%,#1a0f45 100%);border:1px solid var(--border2);border-radius:18px;padding:22px 24px;margin-bottom:20px;box-shadow:0 12px 40px rgba(0,0,0,.45)}
-.hero h1{font-size:1.7rem;font-weight:800;letter-spacing:.2px;background:linear-gradient(90deg,#ffe39a,#ffd36b);-webkit-background-clip:text;background-clip:text;color:transparent}
-.hero p{color:#c9c2f0;font-size:.9rem;margin-top:6px}
-.hero .status{display:inline-flex;align-items:center;gap:7px;margin-top:12px;font-size:.8rem;color:#bdb4ee;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.09);padding:5px 12px;border-radius:20px}
+.hero{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 32%,var(--card)),var(--card));border:1px solid var(--border2);border-radius:18px;padding:22px 24px;margin-bottom:20px;box-shadow:var(--shadow);backdrop-filter:var(--blur)}
+.hero h1{font-size:1.7rem;font-weight:800;letter-spacing:.2px;background:linear-gradient(90deg,var(--accent2),var(--accent));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p{color:var(--muted);font-size:.9rem;margin-top:6px}
+.hero .status{display:inline-flex;align-items:center;gap:7px;margin-top:12px;font-size:.8rem;color:var(--text);background:var(--card2);border:1px solid var(--border);padding:5px 12px;border-radius:20px}
+.herotop{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.themetog{display:inline-flex;background:var(--card2);border:1px solid var(--border);border-radius:999px;padding:3px;gap:2px;flex:none}
+.themetog button{border:none;background:none;color:var(--muted);font-size:.72rem;font-weight:700;padding:5px 11px;border-radius:999px;cursor:pointer;font-family:inherit;transition:background .15s,color .15s}
+.themetog button.on{background:var(--accent);color:#fff}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 8px var(--green)}
 
-.section{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:18px;box-shadow:0 6px 22px rgba(0,0,0,.28)}
+.section{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;margin-bottom:18px;box-shadow:var(--shadow);backdrop-filter:var(--blur)}
 .section h2{display:flex;align-items:center;gap:9px;color:var(--text);font-size:1.15rem;font-weight:700;margin-bottom:4px}
 .section h2 .ico{font-size:1.2rem}
 .section .hint{color:var(--muted);font-size:.83rem;margin-bottom:16px}
-.badge-count{margin-left:auto;font-size:.75rem;font-weight:600;color:var(--accent2);background:rgba(124,92,255,.14);border:1px solid rgba(124,92,255,.3);padding:3px 10px;border-radius:20px}
+.badge-count{margin-left:auto;font-size:.75rem;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 16%,transparent);border:1px solid color-mix(in srgb,var(--accent) 34%,transparent);padding:3px 10px;border-radius:20px}
 
 .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media(max-width:520px){.grid{grid-template-columns:1fr}}
@@ -106,7 +139,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .field:focus-within{border-color:var(--accent)}
 .field label{display:block;color:var(--muted);font-size:.78rem;margin-bottom:8px}
 .field .in{display:flex;align-items:baseline;gap:8px}
-.field input{width:100%;background:transparent;border:none;color:#fff;font-size:1.3rem;font-weight:700;outline:none;min-width:0}
+.field input{width:100%;background:transparent;border:none;color:var(--text);font-size:1.3rem;font-weight:700;outline:none;min-width:0}
 .field .unit{color:var(--muted);font-size:.8rem;font-weight:600}
 
 .btn{display:inline-flex;align-items:center;gap:7px;padding:10px 18px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:.9rem;font-weight:600;cursor:pointer;transition:transform .12s,background .2s}
@@ -134,35 +167,35 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .switch{position:relative;display:inline-block;width:42px;height:24px;flex:none}
 .switch input{opacity:0;width:0;height:0}
 .slider{position:absolute;inset:0;background:var(--border2);border-radius:24px;transition:.2s;cursor:pointer}
-.slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:#8a82b8;border-radius:50%;transition:.2s}
+.slider:before{content:"";position:absolute;height:18px;width:18px;left:3px;top:3px;background:var(--knob-off);border-radius:50%;transition:.2s}
 .switch input:checked+.slider{background:var(--accent)}
-.switch input:checked+.slider:before{transform:translateX(18px);background:#fff}
+.switch input:checked+.slider:before{transform:translateX(18px);background:var(--knob)}
 
 .badge{display:inline-flex;align-items:baseline;gap:3px;font-weight:700;font-size:.95rem;padding:4px 9px;border-radius:8px;min-width:46px;justify-content:center;flex:none}
 .badge small{font-size:.6rem;font-weight:600;opacity:.75}
-.b-green{color:var(--green);background:rgba(0,230,118,.13);border:1px solid rgba(0,230,118,.32)}
-.b-amber{color:var(--amber);background:rgba(255,214,0,.12);border:1px solid rgba(255,214,0,.3)}
-.b-orange{color:var(--orange);background:rgba(255,122,69,.13);border:1px solid rgba(255,122,69,.32)}
-.b-red{color:var(--red);background:rgba(255,45,94,.13);border:1px solid rgba(255,45,94,.32)}
-.b-teal{color:var(--teal);background:rgba(37,230,230,.11);border:1px solid rgba(37,230,230,.3);font-size:.68rem;letter-spacing:.4px}
-.b-muted{color:var(--muted);background:rgba(148,141,194,.1);border:1px solid var(--border2);font-size:.7rem}
+.b-green{color:var(--green);background:color-mix(in srgb,var(--green) 15%,transparent);border:1px solid color-mix(in srgb,var(--green) 34%,transparent)}
+.b-amber{color:var(--amber);background:color-mix(in srgb,var(--amber) 15%,transparent);border:1px solid color-mix(in srgb,var(--amber) 32%,transparent)}
+.b-orange{color:var(--orange);background:color-mix(in srgb,var(--orange) 15%,transparent);border:1px solid color-mix(in srgb,var(--orange) 32%,transparent)}
+.b-red{color:var(--red);background:color-mix(in srgb,var(--red) 15%,transparent);border:1px solid color-mix(in srgb,var(--red) 32%,transparent)}
+.b-teal{color:var(--teal);background:color-mix(in srgb,var(--teal) 13%,transparent);border:1px solid color-mix(in srgb,var(--teal) 30%,transparent);font-size:.68rem;letter-spacing:.4px}
+.b-muted{color:var(--muted);background:var(--card2);border:1px solid var(--border2);font-size:.7rem}
 
 .stats{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 14px}
 .stat{flex:1;min-width:76px;background:var(--input);border:1px solid var(--border);border-radius:12px;padding:10px 12px;text-align:center}
 .stat .v{font-size:1.3rem;font-weight:800}
 .stat .k{font-size:.68rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.4px}
 
-#parkSelector{width:100%;padding:11px 14px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:#fff;font-size:.9rem;margin-bottom:14px;outline:none}
+#parkSelector{width:100%;padding:11px 14px;background:var(--input);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:.9rem;margin-bottom:14px;outline:none}
 #parkSelector:focus{border-color:var(--accent)}
 
-.savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(11,10,26,.92);backdrop-filter:blur(10px);border-top:1px solid var(--border2);padding:14px 16px;z-index:50}
+.savebar{position:fixed;left:0;right:0;bottom:0;background:var(--scrim);backdrop-filter:blur(10px);border-top:1px solid var(--border2);padding:14px 16px;z-index:50}
 .savebar .inner{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px}
 .savebar .save{flex:1;justify-content:center;padding:13px;font-size:1rem}
 .savebar .save.dirty{box-shadow:0 0 0 2px var(--gold),0 0 14px rgba(255,211,107,.5)}
 .savebar .note{color:var(--muted);font-size:.78rem;display:none}
 @media(min-width:560px){.savebar .note{display:block;flex:1}.savebar .save{flex:none;min-width:240px}}
 
-.spinner{display:inline-block;width:15px;height:15px;border:2px solid rgba(255,255,255,.25);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px}
+.spinner{display:inline-block;width:15px;height:15px;border:2px solid color-mix(in srgb,currentColor 30%,transparent);border-top-color:currentColor;border-radius:50%;animation:spin .8s linear infinite;vertical-align:-2px}
 @keyframes spin{to{transform:rotate(360deg)}}
 .toast{position:fixed;left:50%;bottom:90px;transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;transition:.25s;padding:12px 20px;border-radius:12px;font-size:.9rem;font-weight:600;box-shadow:0 10px 30px rgba(0,0,0,.4);z-index:60;max-width:90vw;text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
@@ -173,10 +206,10 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .star{background:none;border:none;font-size:1.15rem;color:var(--border2);cursor:pointer;flex:none;padding:0 4px;line-height:1;transition:color .15s,transform .12s}
 .star:hover{transform:scale(1.15)}
 .star.on{color:var(--gold)}
-.fieldsel{width:100%;background:transparent;border:none;color:#fff;font-size:1rem;font-weight:700;outline:none}
-.fieldsel option{background:var(--card)}
+.fieldsel{width:100%;background:transparent;border:none;color:var(--text);font-size:1rem;font-weight:700;outline:none}
+.fieldsel option{background:var(--card);color:var(--text)}
 .field input[type=range]{accent-color:var(--accent);font-size:1rem;padding:6px 0}
-.field input[type=time]{color-scheme:dark;font-size:1.05rem}
+.field input[type=time]{font-size:1.05rem}
 .field input[type=color]{width:100%;height:36px;border:none;background:transparent;padding:0;cursor:pointer}
 .palrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
 .palcard{flex:1;min-width:92px;max-width:136px;background:var(--input);border:2px solid var(--border);border-radius:12px;padding:8px;cursor:pointer;text-align:center;transition:border-color .15s,transform .12s}
@@ -204,8 +237,17 @@ R"rawliteral(
 </div></div>
 <div class="container">
   <div class="hero">
-    <h1>&#127906; QueueWatch</h1>
-    <p>Live theme-park wait times on your desk. Configure parks, rides &amp; timing below.</p>
+    <div class="herotop">
+      <div>
+        <h1>&#127906; QueueWatch</h1>
+        <p>Live theme-park wait times on your desk. Configure parks, rides &amp; timing below.</p>
+      </div>
+      <div class="themetog" id="themeTog" role="group" aria-label="Theme">
+        <button type="button" data-th="auto" onclick="setTheme('auto')">Auto</button>
+        <button type="button" data-th="light" onclick="setTheme('light')">Light</button>
+        <button type="button" data-th="dark" onclick="setTheme('dark')">Dark</button>
+      </div>
+    </div>
     <div class="status"><span class="dot"></span><span id="statusText">Device connected</span></div>
   </div>
   <form id="configForm" onsubmit="return saveConfig(event)">
@@ -402,6 +444,22 @@ document.addEventListener('input',markDirty);
 document.addEventListener('change',markDirty);
 window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
 
+// Light / Dark / Auto theme. Auto follows the phone (prefers-color-scheme);
+// Light/Dark stamp data-theme on <html> to override. Remembered per browser.
+function applyTheme(t){const r=document.documentElement;
+  if(t==='light'||t==='dark')r.setAttribute('data-theme',t);else r.removeAttribute('data-theme');
+  document.querySelectorAll('#themeTog button').forEach(b=>b.classList.toggle('on',b.dataset.th===t));}
+function setTheme(t){try{localStorage.setItem('qw_theme',t);}catch(e){}applyTheme(t);}
+function initTheme(){let t='auto';try{t=localStorage.getItem('qw_theme')||'auto';}catch(e){}applyTheme(t);}
+initTheme();
+
+// Web accent per device palette (index-matched to PALETTE_DEFS), tuned to stay
+// legible on both light and dark grounds. Picking a palette themes the web page
+// AND the device (palette-sync).
+const WEB_ACCENTS=[['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3']];
+function applyAccent(i){const a=WEB_ACCENTS[i]||WEB_ACCENTS[0];
+  const r=document.documentElement.style;r.setProperty('--accent',a[0]);r.setProperty('--accent2',a[1]);}
+
 // Zones the firmware can map to POSIX rules — keep in sync with the
 // TZ_TABLE in src/tzhelper.cpp.
 const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
@@ -422,7 +480,7 @@ function renderPalRow(){let html='';
       +'<div class="pa" style="background:'+d.a+'"></div>'
       +'<div class="pp" style="background:'+d.p+'"></div></div>'
       +'<div class="pn">'+d.n+'</div></div>';});
-  $('palRow').innerHTML=html;}
+  $('palRow').innerHTML=html;applyAccent(selectedPal);}
 
 const WAIT_DEFAULTS={th:[15,30,45],cols:['#00e676','#ffd600','#ff7043','#ff1744','#18ffff']};
 function resetWaitDefaults(){
