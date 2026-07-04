@@ -101,12 +101,14 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
   }
   page += R"(
 <form action='/save' method='POST'>
-<label for='ssid'>WiFi Name (SSID)</label>
-<input type='text' list='ssids' id='ssid' name='ssid' placeholder='Enter or pick a network' autocomplete='off' required>
-<datalist id='ssids'></datalist>
+<label for='ssidPick'>WiFi Name (SSID)</label>
+<select id='ssidPick' onchange="if(this.value){document.getElementById('ssid').value=this.value;}" style='width:100%;padding:12px;margin-bottom:0.6rem;border:1px solid #333;border-radius:8px;background:#0f3460;color:#fff;font-size:1rem;outline:none;'>
+<option value=''>&#128246; Tap &ldquo;Rescan&rdquo; to find networks&hellip;</option>
+</select>
+<input type='text' id='ssid' name='ssid' placeholder='...or type the network name' autocomplete='off' required>
 <div style='display:flex;justify-content:space-between;align-items:center;margin:-0.5rem 0 1rem;'>
 <span id='scanStatus' style='color:#a0a0b0;font-size:0.8rem;'></span>
-<button type='button' id='scanBtn' onclick='scanWifi()' style='background:none;border:none;color:#4ecca3;font-size:0.8rem;cursor:pointer;padding:0;'>&#128260; Scan networks</button>
+<button type='button' id='scanBtn' onclick='scanWifi()' style='background:none;border:none;color:#4ecca3;font-size:0.8rem;cursor:pointer;padding:0;'>&#128260; Rescan</button>
 </div>
 <label for='pass'>Password</label>
 <input type='password' id='pass' name='pass' placeholder='Enter password'>
@@ -117,16 +119,17 @@ input[type=text]:focus,input[type=password]:focus{border-color:#e94560;}
 </div>
 <script>
 async function scanWifi(){
-  var btn=document.getElementById('scanBtn'),st=document.getElementById('scanStatus');
+  var btn=document.getElementById('scanBtn'),st=document.getElementById('scanStatus'),
+      sel=document.getElementById('ssidPick');
   btn.disabled=true;st.textContent='Scanning...';
   try{
     var res=await fetch('/scan');var nets=await res.json();
-    var dl=document.getElementById('ssids');dl.innerHTML='';
+    sel.innerHTML='<option value="">-- pick a network --</option>';
     nets.forEach(function(n){
       var o=document.createElement('option');
       o.value=n.ssid;
-      o.label=(n.secure?'🔒 ':'')+n.ssid+' ('+n.rssi+' dBm)';
-      dl.appendChild(o);
+      o.textContent=(n.secure?'🔒 ':'')+n.ssid+' ('+n.rssi+' dBm)';
+      sel.appendChild(o);
     });
     st.textContent=nets.length?(nets.length+' network'+(nets.length>1?'s':'')+' found'):'No networks found';
   }catch(e){st.textContent='Scan failed - type the name instead';}
