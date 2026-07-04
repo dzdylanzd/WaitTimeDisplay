@@ -232,7 +232,7 @@ R"rawliteral(
   </div>
 
   <div class="section" id="sec-rides">
-    <h2><span class="ico">&#127903;</span> Rides &amp; Wait Times</h2>
+    <h2><span class="ico">&#127903;</span> Rides &amp; Wait Times <span class="badge-count" id="rideCount" style="display:none"></span></h2>
     <p class="hint">Pick a park to see current wait times, then toggle individual rides on or off.</p>
     <select id="parkSelector"><option value="">-- Select a park --</option></select>
     <div id="rideStats"></div>
@@ -504,7 +504,7 @@ function populateParkSelector(parks){const sel=$('parkSelector');const cur=curre
   sel.innerHTML=html;
   sel.onchange=function(){saveCurrentRideFilterState();const id=parseInt(this.value);if(id)fetchRidesForPark(id);else clearRides();};}
 
-function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';$('rideSearch').value='';}
+function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';$('rideSearch').value='';updateRideCount();}
 
 function saveCurrentRideFilterState(){if(!currentParkId)return;
   const enabledIds=allRides.filter(r=>r.enabled).map(r=>r.id);
@@ -549,20 +549,26 @@ function renderRideStats(){
     +'<div class="stat"><div class="v" style="color:var(--orange)">'+(timed.length?max:'--')+'</div><div class="k">Max min</div></div>'
     +'</div>';}
 
+function updateRideCount(){const el=$('rideCount');if(!el)return;
+  if(!allRides.length){el.style.display='none';return;}
+  el.style.display='';el.textContent=allRides.filter(r=>r.enabled).length+'/'+allRides.length+' on';}
+
 function renderRideList(){const c=$('rideList');
-  if(!allRides.length){c.innerHTML='<p class="empty">No rides available for this park.</p>';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';return;}
-  $('rideTools').style.display='flex';$('rideSearchWrap').style.display='block';renderRideStats();
+  if(!allRides.length){c.innerHTML='<p class="empty">No rides available for this park.</p>';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';updateRideCount();return;}
+  $('rideTools').style.display='flex';$('rideSearchWrap').style.display='block';renderRideStats();updateRideCount();
   const q=($('rideSearch').value||'').toLowerCase();
-  let html='',shown=0;
+  let html='',shown=0,lastLand='\0';
   for(const ride of allRides){
     if(q&&ride.name.toLowerCase().indexOf(q)<0)continue;
     shown++;
+    const land=ride.land||'';
+    if(land!==lastLand){lastLand=land;if(land)html+='<div class="grouphdr">'+escapeHtml(land)+'</div>';}
     html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav('+ride.id+',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
   }
   if(!shown)html='<p class="empty">No rides match your search.</p>';
   c.innerHTML=html;}
 
-function toggleRide(id){const ride=allRides.find(r=>r.id===id);if(ride)ride.enabled=!ride.enabled;}
+function toggleRide(id){const ride=allRides.find(r=>r.id===id);if(ride)ride.enabled=!ride.enabled;updateRideCount();}
 function toggleFav(id,el){const ride=allRides.find(r=>r.id===id);if(!ride)return;
   ride.favorite=!ride.favorite;el.classList.toggle('on',ride.favorite);markDirty();}
 function selectAllRides(select){for(const ride of allRides)ride.enabled=select;renderRideList();markDirty();}
@@ -785,6 +791,7 @@ void ConfigWebServer::handleApiRides() {
     if (i > 0) json += ",";
     json += "{\"id\":";       json += rides[i].id;
     json += ",\"name\":\"";   json += jsonEscape(rides[i].name); json += "\"";
+    json += ",\"land\":\"";   json += jsonEscape(rides[i].land); json += "\"";
     json += ",\"isOpen\":";   json += rides[i].isOpen ? "true" : "false";
     json += ",\"waitTime\":"; json += rides[i].waitTime;
     json += ",\"enabled\":";  json += _cfgMgr.isRideEnabled(parkId, rides[i].id) ? "true" : "false";
