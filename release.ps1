@@ -34,9 +34,12 @@ if (-not $env:GITHUB_TOKEN) {
         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure))
 }
 
-$status = git status --porcelain
+# Only tracked-file changes matter here -- untracked files/dirs (e.g. other
+# in-progress work sitting in the repo) aren't this script's concern and
+# won't be touched by it.
+$status = git status --porcelain --untracked-files=no
 if ($status) {
-    Write-Error "Working tree isn't clean -- commit or stash first:`n$status"
+    Write-Error "Working tree has uncommitted changes -- commit or stash first:`n$status"
     exit 1
 }
 
