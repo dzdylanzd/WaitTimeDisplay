@@ -21,7 +21,7 @@
 // Number of UI colour palettes (RuntimeConfig::colorPalette, 0 = default).
 // The palette definitions live in display.cpp (PALETTES[]) and their names
 // in the web UI (cfgserver.cpp PALETTE_NAMES) — keep all three in sync.
-#define COLOR_PALETTE_COUNT  5
+#define COLOR_PALETTE_COUNT  7
 
 // Max length of a serialized per-park JSON string (ride filters / favorites)
 // that's allowed into NVS — cfgserver.cpp rejects saves that would exceed

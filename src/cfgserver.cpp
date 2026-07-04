@@ -456,7 +456,7 @@ initTheme();
 // Web accent per device palette (index-matched to PALETTE_DEFS), tuned to stay
 // legible on both light and dark grounds. Picking a palette themes the web page
 // AND the device (palette-sync).
-const WEB_ACCENTS=[['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3']];
+const WEB_ACCENTS=[['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3'],['#0c7baa','#1a97c8'],['#c06a16','#dd8a2a']];
 function applyAccent(i){const a=WEB_ACCENTS[i]||WEB_ACCENTS[0];
   const r=document.documentElement.style;r.setProperty('--accent',a[0]);r.setProperty('--accent2',a[1]);}
 
@@ -471,7 +471,9 @@ const PALETTE_DEFS=[
  {n:'Deep Ocean',h:'#04386E',a:'#22C8E0',p:'#06182E'},
  {n:'Sunset Ember',h:'#6E1A08',a:'#FF8C1A',p:'#2A0E06'},
  {n:'Forest Twilight',h:'#0C4A20',a:'#9AE22E',p:'#0A2012'},
- {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'}];
+ {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'},
+ {n:'Daylight',h:'#D6E4F5',a:'#0C7BAA',p:'#EAF1FA'},
+ {n:'Sandstone',h:'#F0E4CE',a:'#C06A16',p:'#FAF2E4'}];
 let selectedPal=0;
 function renderPalRow(){let html='';
   PALETTE_DEFS.forEach((d,i)=>{
