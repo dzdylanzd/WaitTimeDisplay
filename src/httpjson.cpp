@@ -71,7 +71,9 @@ bool httpGetJson(const String& url, DynamicJsonDocument& doc,
     Serial.printf("HTTP %s attempt %u failed: %d\n",
                   url.c_str(), attempt, httpCode);
     http.end();
-    delay(300);
+    // Back off before the next try, but not after the final attempt — that
+    // delay would just stall the caller's return without buying a retry.
+    if (attempt < HTTP_RETRY_MAX) delay(300);
   }
 
   return false;
