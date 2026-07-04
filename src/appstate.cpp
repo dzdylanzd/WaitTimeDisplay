@@ -716,6 +716,15 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
       break;
   }
 
+  // A press during the 10 s startup splash skips the rest of it: backdate the
+  // state-enter clock so tickStartupInfo() runs its normal transition (into the
+  // ride cycle, or the no-parks screen) on this same loop iteration.
+  if (_state == SystemState::STARTUP_INFO &&
+      (ev == ButtonEvent::Short || ev == ButtonEvent::Long)) {
+    _stateEnterTime = millis() - STARTUP_SPLASH_DURATION;
+    return;
+  }
+
   if (_state != SystemState::WAIT_TIME_CYCLE) return;
   if (ev == ButtonEvent::Short) {
     if (_rideCount > 0 && !_showingClosedPark) advanceRide();
