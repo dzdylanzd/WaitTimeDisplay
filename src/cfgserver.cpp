@@ -156,6 +156,7 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .savebar{position:fixed;left:0;right:0;bottom:0;background:rgba(11,10,26,.92);backdrop-filter:blur(10px);border-top:1px solid var(--border2);padding:14px 16px;z-index:50}
 .savebar .inner{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:14px}
 .savebar .save{flex:1;justify-content:center;padding:13px;font-size:1rem}
+.savebar .save.dirty{box-shadow:0 0 0 2px var(--gold),0 0 14px rgba(255,211,107,.5)}
 .savebar .note{color:var(--muted);font-size:.78rem;display:none}
 @media(min-width:560px){.savebar .note{display:block;flex:1}.savebar .save{flex:none;min-width:240px}}
 
@@ -235,6 +236,7 @@ R"rawliteral(
     <p class="hint">Pick a park to see current wait times, then toggle individual rides on or off.</p>
     <select id="parkSelector"><option value="">-- Select a park --</option></select>
     <div id="rideStats"></div>
+    <div class="search" id="rideSearchWrap" style="display:none"><span class="mag">&#128269;</span><input type="text" id="rideSearch" placeholder="Search rides..." oninput="renderRideList()"></div>
     <div class="toolbar" id="rideTools" style="display:none">
       <button type="button" class="btn btn-ghost" onclick="selectAllRides(true)">All on</button>
       <button type="button" class="btn btn-ghost" onclick="selectAllRides(false)">All off</button>
@@ -387,6 +389,17 @@ async function factoryReset(btn){
 let allParks=[];let allRides=[];let currentParkId=0;let rideFilterCache={};let favCache={};
 const $=id=>document.getElementById(id);
 
+// Unsaved-changes tracking: warn before the user navigates away having toggled
+// parks/rides or edited a setting without hitting Save. `loaded` gates out the
+// programmatic form population during startup (setting .value/.checked in code
+// does not fire input/change, but guard anyway).
+let dirty=false,loaded=false;
+function markDirty(){if(!loaded||dirty)return;dirty=true;const b=$('saveBtn');if(b)b.classList.add('dirty');}
+function clearDirty(){dirty=false;const b=$('saveBtn');if(b)b.classList.remove('dirty');}
+document.addEventListener('input',markDirty);
+document.addEventListener('change',markDirty);
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue='';}});
+
 // Zones the firmware can map to POSIX rules — keep in sync with the
 // TZ_TABLE in src/tzhelper.cpp.
 const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
@@ -455,6 +468,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
   }catch(e){toast('Failed to load config','error');}
   // Auto-load the full park list so the user does not have to click Refresh.
   fetchParks($('refreshBtn'));
+  loaded=true;   // arm unsaved-changes tracking after startup population
 });
 
 async function fetchParks(btn){if(!btn)return;btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Loading...';
@@ -482,7 +496,7 @@ function renderParkList(){const c=$('parkList');updateParkCount();
   c.innerHTML=html;}
 
 function togglePark(id){const park=allParks.find(p=>p.id===id);if(park){park.enabled=!park.enabled;updateParkCount();populateParkSelector(allParks.filter(p=>p.enabled));}}
-function selectAllParks(select){for(const park of allParks)park.enabled=select;renderParkList();populateParkSelector(select?allParks:[]);}
+function selectAllParks(select){for(const park of allParks)park.enabled=select;renderParkList();populateParkSelector(select?allParks:[]);markDirty();}
 
 function populateParkSelector(parks){const sel=$('parkSelector');const cur=currentParkId;
   let html='<option value="">-- Select a park --</option>';
@@ -490,7 +504,7 @@ function populateParkSelector(parks){const sel=$('parkSelector');const cur=curre
   sel.innerHTML=html;
   sel.onchange=function(){saveCurrentRideFilterState();const id=parseInt(this.value);if(id)fetchRidesForPark(id);else clearRides();};}
 
-function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';}
+function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';$('rideSearch').value='';}
 
 function saveCurrentRideFilterState(){if(!currentParkId)return;
   const enabledIds=allRides.filter(r=>r.enabled).map(r=>r.id);
@@ -501,6 +515,7 @@ function saveCurrentRideFilterState(){if(!currentParkId)return;
 async function fetchRidesForPark(parkId){currentParkId=parkId;
   const c=$('rideList');c.innerHTML='<p class="empty"><span class="spinner"></span> Loading rides...</p>';
   $('rideStats').innerHTML='';$('rideTools').style.display='none';
+  $('rideSearchWrap').style.display='none';$('rideSearch').value='';
   try{const res=await fetch('/api/rides?parkId='+parkId);allRides=await res.json();
     if(rideFilterCache.hasOwnProperty(parkId)){const cached=rideFilterCache[parkId];
       for(const ride of allRides)ride.enabled=cached===null?true:cached.includes(ride.id);}
@@ -535,18 +550,22 @@ function renderRideStats(){
     +'</div>';}
 
 function renderRideList(){const c=$('rideList');
-  if(!allRides.length){c.innerHTML='<p class="empty">No rides available for this park.</p>';$('rideStats').innerHTML='';$('rideTools').style.display='none';return;}
-  $('rideTools').style.display='flex';renderRideStats();
-  let html='';
+  if(!allRides.length){c.innerHTML='<p class="empty">No rides available for this park.</p>';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';return;}
+  $('rideTools').style.display='flex';$('rideSearchWrap').style.display='block';renderRideStats();
+  const q=($('rideSearch').value||'').toLowerCase();
+  let html='',shown=0;
   for(const ride of allRides){
+    if(q&&ride.name.toLowerCase().indexOf(q)<0)continue;
+    shown++;
     html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav('+ride.id+',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
   }
+  if(!shown)html='<p class="empty">No rides match your search.</p>';
   c.innerHTML=html;}
 
 function toggleRide(id){const ride=allRides.find(r=>r.id===id);if(ride)ride.enabled=!ride.enabled;}
 function toggleFav(id,el){const ride=allRides.find(r=>r.id===id);if(!ride)return;
-  ride.favorite=!ride.favorite;el.classList.toggle('on',ride.favorite);}
-function selectAllRides(select){for(const ride of allRides)ride.enabled=select;renderRideList();}
+  ride.favorite=!ride.favorite;el.classList.toggle('on',ride.favorite);markDirty();}
+function selectAllRides(select){for(const ride of allRides)ride.enabled=select;renderRideList();markDirty();}
 
 async function saveConfig(event){event.preventDefault();saveCurrentRideFilterState();
   const btn=$('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving...';
@@ -559,6 +578,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
     if(result.success){
+      clearDirty();
       const eff=result.effective||{};
       const adjusted=['brightness','quietBrightness','colorPalette','minWait'].some(k=>eff[k]!==undefined&&eff[k]!==body[k]&&eff[k]!==body.rideOptions?.[k])
         ||(eff.waitThresholds&&JSON.stringify(eff.waitThresholds)!==JSON.stringify(body.waitThresholds));
@@ -608,7 +628,7 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
   if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const r=await res.json();
-    if(r.success){toast('&#10003; Config imported! Reloading...','success');setTimeout(()=>location.reload(),1200);}
+    if(r.success){clearDirty();toast('&#10003; Config imported! Reloading...','success');setTimeout(()=>location.reload(),1200);}
     else toast('Import error: '+(r.error||'unknown'),'error');
   }catch(e){toast('Import request failed','error');}}
 
