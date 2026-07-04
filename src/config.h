@@ -13,7 +13,7 @@ constexpr const char* NVS_NAMESPACE = "queuewatch";
 // Bumped manually per release; compared against GitHub Releases' tag_name
 // (see OtaUpdater) to decide whether an update is available. Keep in sync
 // with the git tag pushed for each release (e.g. "v1.0.0").
-constexpr const char* FIRMWARE_VERSION = "1.3.2";
+constexpr const char* FIRMWARE_VERSION = "1.3.3";
 
 // ----------- TFT pins (Waveshare ESP32-C6-LCD-1.47) -----------
 // These match lcd_st7789.h but are kept here for modules that need them.
