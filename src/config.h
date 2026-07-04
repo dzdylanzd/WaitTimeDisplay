@@ -5,7 +5,7 @@
 
 // ----------- Storage -----------
 // Shared NVS namespace for ConfigManager (parks/timings/display settings)
-// AND WiFiManager (credentials) â€” a factory reset wipes both by clearing
+// AND WiFiManager (credentials) — a factory reset wipes both by clearing
 // this one namespace, so the two must agree on the name.
 constexpr const char* NVS_NAMESPACE = "queuewatch";
 
@@ -26,7 +26,7 @@ constexpr const char* FIRMWARE_VERSION = "1.3.2";
 
 // ----------- Other onboard peripherals -----------
 #define RGB_LED_PIN   8   // WS2812 (Waveshare ESP32-C6-LCD-1.47 onboard LED)
-#define BOOT_BTN_PIN  9   // BOOT button, active-low. Strapping pin â€” safe to
+#define BOOT_BTN_PIN  9   // BOOT button, active-low. Strapping pin — safe to
                           // read with INPUT_PULLUP at runtime (matches its
                           // boot-time default state).
 
