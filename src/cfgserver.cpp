@@ -123,6 +123,8 @@ body{background:var(--bg);background-image:radial-gradient(1100px 520px at 50% -
 .search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem}
 
 .grouphdr{color:var(--gold);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:14px 0 6px}
+.grouphdr .landsel{background:none;border:1px solid var(--border2);color:var(--muted);font-size:.62rem;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:5px;text-transform:none;letter-spacing:0}
+.grouphdr .landsel:hover{border-color:var(--accent);color:var(--text)}
 .item{display:flex;align-items:center;gap:12px;padding:9px 6px;border-radius:10px;transition:background .15s}
 .item:hover{background:var(--card2)}
 .item .name{flex:1;font-size:.92rem;color:var(--text);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -562,7 +564,7 @@ function renderRideList(){const c=$('rideList');
     if(q&&ride.name.toLowerCase().indexOf(q)<0)continue;
     shown++;
     const land=ride.land||'';
-    if(land!==lastLand){lastLand=land;if(land)html+='<div class="grouphdr">'+escapeHtml(land)+'</div>';}
+    if(land!==lastLand){lastLand=land;if(land)html+='<div class="grouphdr">'+escapeHtml(land)+'<button type="button" class="landsel" data-land="'+escapeHtml(land)+'" data-on="1">all</button><button type="button" class="landsel" data-land="'+escapeHtml(land)+'" data-on="0">none</button></div>';}
     html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav('+ride.id+',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
   }
   if(!shown)html='<p class="empty">No rides match your search.</p>';
@@ -572,6 +574,14 @@ function toggleRide(id){const ride=allRides.find(r=>r.id===id);if(ride)ride.enab
 function toggleFav(id,el){const ride=allRides.find(r=>r.id===id);if(!ride)return;
   ride.favorite=!ride.favorite;el.classList.toggle('on',ride.favorite);markDirty();}
 function selectAllRides(select){for(const ride of allRides)ride.enabled=select;renderRideList();markDirty();}
+// Per-land "all/none" toggles injected into each land header (event-delegated
+// so it survives the rideList re-render; data-land is HTML-decoded by
+// getAttribute, matching ride.land exactly regardless of quotes/accents).
+$('rideList').addEventListener('click',function(e){
+  const b=e.target.closest('.landsel');if(!b)return;
+  const land=b.getAttribute('data-land'),on=b.getAttribute('data-on')==='1';
+  for(const r of allRides)if((r.land||'')===land)r.enabled=on;
+  renderRideList();markDirty();});
 
 async function saveConfig(event){event.preventDefault();saveCurrentRideFilterState();
   const btn=$('saveBtn');btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Saving...';
