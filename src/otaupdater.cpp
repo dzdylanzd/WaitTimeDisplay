@@ -55,6 +55,12 @@ String OtaUpdater::resolveRedirect(const String& url) {
   if (!http.begin(client, url)) { http.end(); return ""; }
   http.setTimeout(HTTP_TIMEOUT_MS);
   http.addHeader("User-Agent", kUserAgent);
+  // HTTPClient::header() only returns headers explicitly requested here —
+  // without this, it silently returns "" for every header, including a
+  // real Location on a real redirect (this was a real bug: every redirect
+  // response looked identical to "no Location sent").
+  static const char* kHeaderKeys[] = {"Location"};
+  http.collectHeaders(kHeaderKeys, 1);
 
   int code = http.GET();
   String result;
