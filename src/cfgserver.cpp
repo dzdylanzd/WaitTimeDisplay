@@ -207,7 +207,10 @@ body{background:radial-gradient(1100px 560px at 50% -8%,color-mix(in srgb,var(--
 .star:hover{transform:scale(1.15)}
 .star.on{color:var(--gold)}
 .fieldsel{width:100%;background:transparent;border:none;color:var(--text);font-size:1rem;font-weight:700;outline:none}
-.fieldsel option{background:var(--card);color:var(--text)}
+/* Native <option> popups follow color-scheme, but style them explicitly too so
+   the dropdown list matches the theme (esp. the manual dark toggle). */
+select{color-scheme:inherit}
+.fieldsel option,#parkSelector option,#dev_tz option,#sortMode option{background:var(--card);color:var(--text)}
 .field input[type=range]{accent-color:var(--accent);font-size:1rem;padding:6px 0}
 .field input[type=time]{font-size:1.05rem}
 .field input[type=color]{width:100%;height:36px;border:none;background:transparent;padding:0;cursor:pointer}
