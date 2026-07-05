@@ -132,22 +132,22 @@ static const UiPalette* PAL = &PALETTES[0];
 //
 // The accent of each level is user-configurable (RuntimeConfig::waitColors,
 // pushed in via setWaitConfig) and drives the big number, top border and
-// stripe. The panel BACKGROUND is a colour of the active palette (PAL->panelBg,
-// see themeFromColor) — uniform across all palettes, so it follows the palette
-// light/dark automatically. The thresholds are user-configurable too
-// (waitTh1..3).
+// stripe. The panel BACKGROUND is the active palette's signature accent colour
+// (PAL->accent, see themeFromColor) — uniform across all palettes. The
+// thresholds are user-configurable too (waitTh1..3).
 // ---------------------------------------------------------------------------
 struct WaitTheme { lv_color_t bgTop; lv_color_t bgBot; lv_color_t accent; };
 
 static WaitTheme themeFromColor(uint32_t rgb) {
     uint8_t r = (rgb >> 16) & 0xFF, g = (rgb >> 8) & 0xFF, b = rgb & 0xFF;
     WaitTheme t;
-    // The wait-panel background is a colour of the ACTIVE PALETTE — the same
-    // derivation for every palette and every wait level, so a light palette
-    // yields a light panel automatically with no light/dark special-casing.
-    // Only the number, border and stripe carry the configured wait colour.
-    t.bgTop  = PAL->panelBg;
-    t.bgBot  = PAL->panelBg;
+    // The wait-panel background is the ACTIVE PALETTE's signature accent colour
+    // (gold / cyan / teal …) — the same for every wait level, so each palette
+    // gives a distinct, on-brand panel and the screen shows three palette
+    // colours (header, ride panel, wait panel). Only the number, border and
+    // stripe carry the configured wait colour.
+    t.bgTop  = PAL->accent;
+    t.bgBot  = PAL->accent;
     t.accent = lv_color_make(r, g, b);
     return t;
 }
