@@ -103,11 +103,16 @@ static const UiPalette PALETTES[] = {
     LV_COLOR_MAKE(0xFB,0xF6,0xEC) },
 };
 static constexpr int UI_PALETTE_COUNT = sizeof(PALETTES) / sizeof(PALETTES[0]);
-// configmanager.h's COLOR_PALETTE_COUNT (validated by cfgserver.cpp and
-// clamped by ConfigManager) must match the actual PALETTES[] entry count,
-// or a saved palette id could be accepted server-side but rejected here.
-static_assert(UI_PALETTE_COUNT == COLOR_PALETTE_COUNT,
-              "PALETTES[] size must match configmanager.h's COLOR_PALETTE_COUNT");
+// The last colorPalette index is the user-defined "Custom" palette, held in a
+// separate mutable slot (s_customPalette) rather than a PALETTES[] entry — so
+// the presets stay const. configmanager.h's COLOR_PALETTE_COUNT (validated by
+// cfgserver.cpp and clamped by ConfigManager) is the presets + that one Custom.
+static constexpr int CUSTOM_PALETTE_INDEX = UI_PALETTE_COUNT;
+static_assert(UI_PALETTE_COUNT + 1 == COLOR_PALETTE_COUNT,
+              "PALETTES[] count + 1 (Custom) must match COLOR_PALETTE_COUNT");
+// The Custom palette, derived from 3 user colours by setCustomPalette();
+// starts as a copy of the default preset so it is valid before first use.
+static UiPalette s_customPalette = PALETTES[0];
 
 // Active palette — every colour below is read through this pointer, so text
 // and message colours set at call time always use the current palette.
@@ -645,8 +650,9 @@ struct PaletteBinding {
 };
 
 void DisplayController::applyPalette(uint8_t paletteId) {
-    if (paletteId >= UI_PALETTE_COUNT) paletteId = 0;
-    PAL = &PALETTES[paletteId];
+    if (paletteId == CUSTOM_PALETTE_INDEX)   PAL = &s_customPalette;
+    else if (paletteId < UI_PALETTE_COUNT)   PAL = &PALETTES[paletteId];
+    else                                     PAL = &PALETTES[0];
 
     // The wait-panel background is a palette colour (see themeFromColor), so a
     // palette change must re-derive the wait themes even without a following
@@ -707,6 +713,39 @@ void DisplayController::setWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
     WAIT_TH3 = th3;
     for (int i = 0; i < 5; i++) s_waitColors[i] = colors[i];
     rebuildWaitThemes();
+}
+
+// ---------------------------------------------------------------------------
+// setCustomPalette — build the "Custom" palette from 3 user-picked colours,
+// deriving the remaining fields (text shades, dims, backgrounds) so the result
+// stays legible whatever colours the user chose. The caller repaints.
+// ---------------------------------------------------------------------------
+void DisplayController::setCustomPalette(uint32_t hdrRgb, uint32_t accRgb,
+                                         uint32_t pnlRgb) {
+    auto C = [](uint32_t c) {
+        return lv_color_make((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF);
+    };
+    lv_color_t hdr = C(hdrRgb), acc = C(accRgb), pnl = C(pnlRgb);
+    const lv_color_t LIGHT = LV_COLOR_MAKE(0xF0, 0xF2, 0xFA);
+    const lv_color_t DARK  = LV_COLOR_MAKE(0x18, 0x1E, 0x28);
+    // High-contrast text per background (light bg -> dark ink, and vice versa).
+    lv_color_t txtHdr = (lv_color_brightness(hdr) > 140) ? DARK : LIGHT;
+    lv_color_t txtPnl = (lv_color_brightness(pnl) > 140) ? DARK : LIGHT;
+
+    UiPalette& p = s_customPalette;
+    p.hdrBg     = hdr;
+    p.accent    = acc;
+    p.accentDim = lv_color_mix(acc, hdr, 110);       // 5-14 min stale separator
+    p.accentOld = lv_color_mix(acc, DARK, 120);      // 15+ min stale separator
+    p.track     = lv_color_mix(hdr, txtHdr, 40);     // progress-bar track
+    p.parkTxt   = txtHdr;                            // park name
+    p.timeTxt   = lv_color_mix(txtHdr, hdr, 210);    // clock (slightly muted)
+    p.idxTxt    = lv_color_mix(txtHdr, hdr, 150);    // index/land/country (muted)
+    p.rideTxt   = txtPnl;                            // ride name
+    p.bodyTxt   = txtPnl;                            // body/status + wait sub-label
+    p.rideBg    = pnl;
+    p.panelBg   = lv_color_mix(pnl, txtPnl, 30);     // status/portal bottom bar
+    p.statusBg  = pnl;
 }
 
 // ---------------------------------------------------------------------------

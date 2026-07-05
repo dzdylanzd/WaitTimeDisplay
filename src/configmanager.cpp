@@ -25,6 +25,9 @@ void ConfigManager::load() {
   _config.flipScreen        = _prefs.getBool("flip_scr", false);
   _config.colorPalette      = (uint8_t)_prefs.getInt("pal", 0);
   if (_config.colorPalette >= COLOR_PALETTE_COUNT) _config.colorPalette = 0;
+  _config.customHdr    = (uint32_t)_prefs.getInt("cst_h", (int32_t)_config.customHdr);
+  _config.customAccent = (uint32_t)_prefs.getInt("cst_a", (int32_t)_config.customAccent);
+  _config.customPanel  = (uint32_t)_prefs.getInt("cst_p", (int32_t)_config.customPanel);
 
   _config.waitTh1 = (uint8_t)_prefs.getInt("wt1", WAIT_TH_DEFAULTS[0]);
   _config.waitTh2 = (uint8_t)_prefs.getInt("wt2", WAIT_TH_DEFAULTS[1]);
@@ -114,6 +117,17 @@ void ConfigManager::savePalette(uint8_t colorPalette) {
   _prefs.putInt("pal", colorPalette);
   _prefs.end();
   _config.colorPalette = colorPalette;
+}
+
+void ConfigManager::saveCustomPalette(uint32_t hdr, uint32_t accent, uint32_t panel) {
+  _prefs.begin(NVS_NAMESPACE, false);
+  _prefs.putInt("cst_h", (int32_t)hdr);
+  _prefs.putInt("cst_a", (int32_t)accent);
+  _prefs.putInt("cst_p", (int32_t)panel);
+  _prefs.end();
+  _config.customHdr    = hdr;
+  _config.customAccent = accent;
+  _config.customPanel  = panel;
 }
 
 void ConfigManager::saveWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,

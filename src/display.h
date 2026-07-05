@@ -63,6 +63,12 @@ public:
   // amber/orange/red/teal) are semantic and stay the same in every palette.
   void applyPalette(uint8_t paletteId);
 
+  // Define the user "Custom" palette (the last colorPalette index) from three
+  // picked 0xRRGGBB colours — header background, accent, ride-panel background.
+  // The remaining palette colours (text shades, dims, status backgrounds) are
+  // derived for legibility. Call before applyPalette() selects the Custom slot.
+  void setCustomPalette(uint32_t hdr, uint32_t accent, uint32_t panel);
+
   // User-configured wait-time thresholds (minutes) + level colours
   // (0xRRGGBB, indexed by (int)WaitLevel). Panel backgrounds are derived
   // from each colour; the caller triggers the repaint.

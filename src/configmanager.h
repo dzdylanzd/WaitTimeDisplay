@@ -20,8 +20,10 @@
 
 // Number of UI colour palettes (RuntimeConfig::colorPalette, 0 = default).
 // The palette definitions live in display.cpp (PALETTES[]) and their names
-// in the web UI (cfgserver.cpp PALETTE_NAMES) — keep all three in sync.
-#define COLOR_PALETTE_COUNT  7
+// in the web UI (cfgserver.cpp PALETTE_DEFS) — keep all three in sync. The
+// LAST index is the user-defined "Custom" palette (colours below), not a
+// PALETTES[] entry — see CUSTOM_PALETTE_INDEX in display.cpp.
+#define COLOR_PALETTE_COUNT  8
 
 // Max length of a serialized per-park JSON string (ride filters / favorites)
 // that's allowed into NVS — cfgserver.cpp rejects saves that would exceed
@@ -48,7 +50,14 @@ struct RuntimeConfig {
   uint8_t  quietBrightness   = 0;       // 0 = backlight off during quiet hours
   bool     ledEnabled        = true;    // onboard RGB wait-colour LED
   bool     flipScreen        = false;   // rotate the display 180°
-  uint8_t  colorPalette      = 0;       // UI chrome palette (0 = Magic Night)
+  uint8_t  colorPalette      = 0;       // UI chrome palette (0 = Magic Night,
+                                        // COLOR_PALETTE_COUNT-1 = Custom)
+  // User-defined "Custom" palette: 3 picked 0xRRGGBB colours (header bg,
+  // accent, ride-panel bg); the rest of the palette is derived from these.
+  // Defaults mirror Magic Night so a fresh Custom palette looks sensible.
+  uint32_t customHdr    = 0x2A0860;
+  uint32_t customAccent = 0xC89E20;
+  uint32_t customPanel  = 0x160A34;
   String   deviceTimezone;              // IANA zone for quiet hours;
                                         // "" = follow the displayed park
 
@@ -90,6 +99,7 @@ public:
                            uint8_t quietBrightness, bool ledEnabled,
                            bool flipScreen, const String& deviceTimezone);
   void savePalette(uint8_t colorPalette);
+  void saveCustomPalette(uint32_t hdr, uint32_t accent, uint32_t panel);
   void saveWaitConfig(uint8_t th1, uint8_t th2, uint8_t th3,
                       const uint32_t colors[5]);
   void saveRideOptions(uint8_t sortMode, bool favoritesFirst,

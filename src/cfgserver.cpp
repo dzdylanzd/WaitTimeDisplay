@@ -322,6 +322,14 @@ R"rawliteral(
     </div>
     <div class="grouphdr" style="margin-top:16px">Colour palette</div>
     <div class="palrow" id="palRow"></div>
+    <div id="customWrap" style="display:none;margin-top:12px">
+      <p class="hint" style="margin-bottom:8px">Pick your own colours &mdash; text shades are derived automatically. The wait number keeps its own colour (set in Wait colours).</p>
+      <div class="grid">
+        <div class="field"><label>Header colour</label><input type="color" id="cstHdr" value="#2A0860" oninput="onCustomPick()"></div>
+        <div class="field"><label>Accent colour</label><input type="color" id="cstAcc" value="#C89E20" oninput="onCustomPick()"></div>
+        <div class="field"><label>Panel colour</label><input type="color" id="cstPnl" value="#160A34" oninput="onCustomPick()"></div>
+      </div>
+    </div>
   </div>
   <div class="section" id="sec-wait">
     <h2><span class="ico">&#127912;</span> Wait colours</h2>
@@ -460,7 +468,8 @@ initTheme();
 // legible on both light and dark grounds. Picking a palette themes the web page
 // AND the device (palette-sync).
 const WEB_ACCENTS=[['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3'],['#0c7baa','#1a97c8'],['#c06a16','#dd8a2a']];
-function applyAccent(i){const a=WEB_ACCENTS[i]||WEB_ACCENTS[0];
+function applyAccent(i){
+  const a=(PALETTE_DEFS[i]&&PALETTE_DEFS[i].custom)?[customPal.a,customPal.a]:(WEB_ACCENTS[i]||WEB_ACCENTS[0]);
   const r=document.documentElement.style;r.setProperty('--accent',a[0]);r.setProperty('--accent2',a[1]);}
 
 // Zones the firmware can map to POSIX rules — keep in sync with the
@@ -468,7 +477,8 @@ function applyAccent(i){const a=WEB_ACCENTS[i]||WEB_ACCENTS[0];
 const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
 
 // Palette swatches — order and hexes must match PALETTES[] in src/display.cpp
-// (h=header, a=accent, p=ride panel; count: COLOR_PALETTE_COUNT).
+// (h=header, a=accent, p=ride panel). The LAST entry is the user "Custom"
+// palette; its colours live in customPal and sync into the swatch on render.
 const PALETTE_DEFS=[
  {n:'Magic Night',h:'#2A0860',a:'#C89E20',p:'#160A34'},
  {n:'Deep Ocean',h:'#04386E',a:'#22C8E0',p:'#06182E'},
@@ -476,16 +486,25 @@ const PALETTE_DEFS=[
  {n:'Forest Twilight',h:'#0C4A20',a:'#9AE22E',p:'#0A2012'},
  {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'},
  {n:'Daylight',h:'#D6E4F5',a:'#0C7BAA',p:'#EAF1FA'},
- {n:'Sandstone',h:'#F0E4CE',a:'#C06A16',p:'#FAF2E4'}];
+ {n:'Sandstone',h:'#F0E4CE',a:'#C06A16',p:'#FAF2E4'},
+ {n:'Custom',h:'#2A0860',a:'#C89E20',p:'#160A34',custom:true}];
 let selectedPal=0;
+let customPal={h:'#2A0860',a:'#C89E20',p:'#160A34'};   // header / accent / panel
 function renderPalRow(){let html='';
+  const cd=PALETTE_DEFS.find(d=>d.custom);
+  if(cd){cd.h=customPal.h;cd.a=customPal.a;cd.p=customPal.p;}   // live swatch
   PALETTE_DEFS.forEach((d,i)=>{
-    html+='<div class="palcard'+(i===selectedPal?' sel':'')+'" onclick="selectedPal='+i+';renderPalRow()">'
+    html+='<div class="palcard'+(i===selectedPal?' sel':'')+'" onclick="pickPalette('+i+')">'
       +'<div class="palprev"><div class="ph" style="background:'+d.h+'"></div>'
       +'<div class="pa" style="background:'+d.a+'"></div>'
       +'<div class="pp" style="background:'+d.p+'"></div></div>'
       +'<div class="pn">'+d.n+'</div></div>';});
-  $('palRow').innerHTML=html;applyAccent(selectedPal);}
+  $('palRow').innerHTML=html;
+  const cw=$('customWrap');
+  if(cw)cw.style.display=(PALETTE_DEFS[selectedPal]&&PALETTE_DEFS[selectedPal].custom)?'block':'none';
+  applyAccent(selectedPal);}
+function pickPalette(i){selectedPal=i;renderPalRow();}
+function onCustomPick(){customPal={h:$('cstHdr').value,a:$('cstAcc').value,p:$('cstPnl').value};renderPalRow();}
 
 const WAIT_DEFAULTS={th:[15,30,45],cols:['#00e676','#ffd600','#ff7043','#ff1744','#18ffff']};
 function resetWaitDefaults(){
@@ -517,6 +536,8 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(typeof cfg.ledEnabled==='boolean')$('led_en').checked=cfg.ledEnabled;
     if(typeof cfg.flipScreen==='boolean')$('flip_scr').checked=cfg.flipScreen;
     if(typeof cfg.deviceTimezone==='string')$('dev_tz').value=cfg.deviceTimezone;
+    if(cfg.customPalette){customPal={h:cfg.customPalette.hdr,a:cfg.customPalette.accent,p:cfg.customPalette.panel};
+      $('cstHdr').value=customPal.h;$('cstAcc').value=customPal.a;$('cstPnl').value=customPal.p;}
     if(typeof cfg.colorPalette==='number'){selectedPal=cfg.colorPalette;renderPalRow();}
     if(Array.isArray(cfg.waitThresholds)&&cfg.waitThresholds.length===3){
       $('wt1').value=cfg.waitThresholds[0];$('wt2').value=cfg.waitThresholds[1];$('wt3').value=cfg.waitThresholds[2];}
@@ -652,7 +673,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
   const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
-    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,customPalette:{hdr:customPal.h,accent:customPal.a,panel:customPal.p},waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
@@ -702,6 +723,7 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
   if(typeof cfg.flipScreen==='boolean')body.flipScreen=cfg.flipScreen;
   if(typeof cfg.deviceTimezone==='string')body.deviceTimezone=cfg.deviceTimezone;
   if(typeof cfg.colorPalette==='number')body.colorPalette=cfg.colorPalette;
+  if(cfg.customPalette)body.customPalette=cfg.customPalette;
   if(Array.isArray(cfg.waitThresholds))body.waitThresholds=cfg.waitThresholds;
   if(Array.isArray(cfg.waitColors))body.waitColors=cfg.waitColors;
   if(cfg.rideOptions)body.rideOptions=cfg.rideOptions;
@@ -906,6 +928,10 @@ void ConfigWebServer::handleApiConfig() {
   doc["flipScreen"]      = cfg.flipScreen;
   doc["deviceTimezone"]  = cfg.deviceTimezone;
   doc["colorPalette"]    = cfg.colorPalette;
+  JsonObject cp = doc.createNestedObject("customPalette");
+  cp["hdr"]    = hexColor(cfg.customHdr);
+  cp["accent"] = hexColor(cfg.customAccent);
+  cp["panel"]  = hexColor(cfg.customPanel);
 
   JsonArray wt = doc.createNestedArray("waitThresholds");
   wt.add(cfg.waitTh1); wt.add(cfg.waitTh2); wt.add(cfg.waitTh3);
@@ -1033,6 +1059,16 @@ void ConfigWebServer::handleSaveConfig() {
                                               : cur.colorPalette;
     if (pal < 0 || pal >= COLOR_PALETTE_COUNT) pal = 0;
     _cfgMgr.savePalette((uint8_t)pal);
+
+    // Custom palette colours (header / accent / panel). Missing keys keep the
+    // current values; malformed hex falls back per parseHexColor.
+    JsonObject cp = doc["customPalette"].as<JsonObject>();
+    if (!cp.isNull()) {
+      uint32_t ch  = parseHexColor(cp["hdr"].as<const char*>(),    cur.customHdr);
+      uint32_t ca  = parseHexColor(cp["accent"].as<const char*>(), cur.customAccent);
+      uint32_t cpn = parseHexColor(cp["panel"].as<const char*>(),  cur.customPanel);
+      _cfgMgr.saveCustomPalette(ch, ca, cpn);
+    }
 
     // Wait thresholds + level colours. Missing fields keep current values;
     // thresholds are clamped to 1..240 and forced strictly ascending.

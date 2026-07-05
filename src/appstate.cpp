@@ -810,8 +810,14 @@ void AppStateManager::applyScreenFlip() {
 
 // Restyle the LVGL screens when the user picked a different UI palette.
 void AppStateManager::applyColorPalette() {
-  uint8_t pal = _cfg.getConfig().colorPalette;
-  if (pal == _lastAppliedPalette) return;
+  const RuntimeConfig& cfg = _cfg.getConfig();
+  // Keep the Custom palette definition current — its picked colours can change
+  // while the selected index stays put, so push them every time.
+  _display.setCustomPalette(cfg.customHdr, cfg.customAccent, cfg.customPanel);
+  uint8_t pal = cfg.colorPalette;
+  bool isCustom = (pal == COLOR_PALETTE_COUNT - 1);
+  // Re-apply whenever the index changed, or it's Custom (colours may have moved).
+  if (pal == _lastAppliedPalette && !isCustom) return;
   _lastAppliedPalette = pal;
   _display.applyPalette(pal);
 }
