@@ -23,7 +23,7 @@
 // in the web UI (cfgserver.cpp PALETTE_DEFS) — keep all three in sync. The
 // LAST index is the user-defined "Custom" palette (colours below), not a
 // PALETTES[] entry — see CUSTOM_PALETTE_INDEX in display.cpp.
-#define COLOR_PALETTE_COUNT  8
+#define COLOR_PALETTE_COUNT  22
 
 // Max length of a serialized per-park JSON string (ride filters / favorites)
 // that's allowed into NVS — cfgserver.cpp rejects saves that would exceed

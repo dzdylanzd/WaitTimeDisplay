@@ -467,7 +467,12 @@ initTheme();
 // Web accent per device palette (index-matched to PALETTE_DEFS), tuned to stay
 // legible on both light and dark grounds. Picking a palette themes the web page
 // AND the device (palette-sync).
-const WEB_ACCENTS=[['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3'],['#0c7baa','#1a97c8'],['#c06a16','#dd8a2a']];
+)rawliteral"
+R"rawliteral(
+const WEB_ACCENTS=[
+  ['#6a58ee','#8f7cff'],['#0a9fbe','#26c6de'],['#e8631a','#ff8a3d'],['#2f9e3f','#54c95f'],['#5b6b86','#8a99b3'],['#0c7baa','#1a97c8'],['#c06a16','#dd8a2a'],
+  ['#b1879a','#cc9fb0'],['#4fa396','#66bfb2'],['#a77c82','#c0989e'],['#7d9b76','#96b88e'],['#748aa0','#8ea8c2'],['#b58d6b','#cfa886'],['#a38a70','#bda488'],
+  ['#16151b','#2a2530'],['#171b22','#2c3440'],['#1a1216','#30222a'],['#151917','#282e2c'],['#161920','#2a2e38'],['#121817','#242e2c'],['#1a1511','#2e2620']];
 function applyAccent(i){
   const a=(PALETTE_DEFS[i]&&PALETTE_DEFS[i].custom)?[customPal.a,customPal.a]:(WEB_ACCENTS[i]||WEB_ACCENTS[0]);
   const r=document.documentElement.style;r.setProperty('--accent',a[0]);r.setProperty('--accent2',a[1]);}
@@ -477,19 +482,33 @@ function applyAccent(i){
 const TZ_LIST=['America/Chicago','America/Denver','America/Detroit','America/Halifax','America/Los_Angeles','America/Mexico_City','America/New_York','America/Phoenix','America/Sao_Paulo','America/Toronto','America/Vancouver','Asia/Bangkok','Asia/Beijing','Asia/Dubai','Asia/Hong_Kong','Asia/Istanbul','Asia/Jakarta','Asia/Kolkata','Asia/Kuala_Lumpur','Asia/Macau','Asia/Muscat','Asia/Riyadh','Asia/Seoul','Asia/Shanghai','Asia/Singapore','Asia/Taipei','Asia/Tokyo','Australia/Brisbane','Australia/Melbourne','Australia/Perth','Australia/Sydney','Europe/Amsterdam','Europe/Berlin','Europe/Brussels','Europe/Budapest','Europe/Copenhagen','Europe/Dublin','Europe/Helsinki','Europe/Lisbon','Europe/London','Europe/Madrid','Europe/Oslo','Europe/Paris','Europe/Prague','Europe/Rome','Europe/Stockholm','Europe/Vienna','Europe/Warsaw','Europe/Zurich','Pacific/Auckland','Pacific/Guam','Pacific/Honolulu'];
 
 // Palette swatches — order and hexes must match PALETTES[] in src/display.cpp
-// (h=header, a=accent, p=ride panel). The LAST entry is the user "Custom"
+// (h=header, a=panel, p=accent). The LAST entry is the user "Custom"
 // palette; its colours live in customPal and sync into the swatch on render.
 const PALETTE_DEFS=[
- {n:'Magic Night',h:'#2A0860',a:'#C89E20',p:'#160A34'},
- {n:'Deep Ocean',h:'#04386E',a:'#22C8E0',p:'#06182E'},
- {n:'Sunset Ember',h:'#6E1A08',a:'#FF8C1A',p:'#2A0E06'},
- {n:'Forest Twilight',h:'#0C4A20',a:'#9AE22E',p:'#0A2012'},
- {n:'Carbon Mono',h:'#3A3A40',a:'#E0E0E4',p:'#1A1A1E'},
- {n:'Daylight',h:'#D6E4F5',a:'#0C7BAA',p:'#EAF1FA'},
- {n:'Sandstone',h:'#F0E4CE',a:'#C06A16',p:'#FAF2E4'},
- {n:'Custom',h:'#2A0860',a:'#C89E20',p:'#160A34',custom:true}];
+ {n:'Magic Night',h:'#34105F',a:'#160A34',p:'#D9A62E'},
+ {n:'Deep Ocean',h:'#06355F',a:'#0B1E33',p:'#22C8E0'},
+ {n:'Sunset Ember',h:'#7A2111',a:'#25120C',p:'#FF8A1E'},
+ {n:'Forest Twilight',h:'#0E4D2A',a:'#10261A',p:'#A5EA34'},
+ {n:'Carbon Mono',h:'#3A3A40',a:'#222228',p:'#E6E6EA'},
+ {n:'Daylight',h:'#D9E7F7',a:'#B8CDE8',p:'#0D7FA9'},
+ {n:'Sandstone',h:'#F2E6CF',a:'#DCCDB0',p:'#C26B18'},
+ {n:'Midnight Peony',h:'#2B2438',a:'#1A1622',p:'#D7A3B3'},
+ {n:'Lagoon Fog',h:'#23485A',a:'#172D37',p:'#9BC7C1'},
+ {n:'Tea Rose',h:'#5C3441',a:'#352028',p:'#E4C3B8'},
+ {n:'Willow Shade',h:'#394736',a:'#232D21',p:'#B8C49A'},
+ {n:'Stone Harbor',h:'#465A70',a:'#2A3440',p:'#C7D2E1'},
+ {n:'Morning Clay',h:'#D5B08E',a:'#B98F6F',p:'#F0D9B7'},
+ {n:'Sand Drift',h:'#BFA78E',a:'#8F7A64',p:'#E6D7C6'},
+ {n:'Night Iris',h:'#2A1E4A',a:'#151420',p:'#16151B'},
+ {n:'Dusk Harbor',h:'#22324B',a:'#141C28',p:'#171B22'},
+ {n:'Cedar Wine',h:'#3F2431',a:'#20161C',p:'#1A1216'},
+ {n:'Moss Slate',h:'#2D3A30',a:'#191F1B',p:'#151917'},
+ {n:'Ink Alloy',h:'#343848',a:'#191C25',p:'#161920'},
+ {n:'Frost Pine',h:'#24423B',a:'#162520',p:'#121817'},
+ {n:'Desert Night',h:'#4A3B2D',a:'#251D15',p:'#1A1511'},
+ {n:'Custom',h:'#34105F',a:'#160A34',p:'#D9A62E',custom:true}];
 let selectedPal=0;
-let customPal={h:'#2A0860',a:'#C89E20',p:'#160A34'};   // header / accent / panel
+let customPal={h:'#34105F',a:'#160A34',p:'#D9A62E'};   // header / panel / accent
 function renderPalRow(){let html='';
   const cd=PALETTE_DEFS.find(d=>d.custom);
   if(cd){cd.h=customPal.h;cd.a=customPal.a;cd.p=customPal.p;}   // live swatch
@@ -536,7 +555,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(typeof cfg.ledEnabled==='boolean')$('led_en').checked=cfg.ledEnabled;
     if(typeof cfg.flipScreen==='boolean')$('flip_scr').checked=cfg.flipScreen;
     if(typeof cfg.deviceTimezone==='string')$('dev_tz').value=cfg.deviceTimezone;
-    if(cfg.customPalette){customPal={h:cfg.customPalette.hdr,a:cfg.customPalette.accent,p:cfg.customPalette.panel};
+    if(cfg.customPalette){customPal={h:cfg.customPalette.hdr,a:cfg.customPalette.panel,p:cfg.customPalette.accent};
       $('cstHdr').value=customPal.h;$('cstAcc').value=customPal.a;$('cstPnl').value=customPal.p;}
     if(typeof cfg.colorPalette==='number'){selectedPal=cfg.colorPalette;renderPalRow();}
     if(Array.isArray(cfg.waitThresholds)&&cfg.waitThresholds.length===3){
@@ -673,7 +692,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
   const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
-    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,customPalette:{hdr:customPal.h,accent:customPal.a,panel:customPal.p},waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
+    brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,customPalette:{hdr:customPal.h,accent:customPal.p,panel:customPal.a},waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const result=await res.json();
@@ -930,8 +949,8 @@ void ConfigWebServer::handleApiConfig() {
   doc["colorPalette"]    = cfg.colorPalette;
   JsonObject cp = doc.createNestedObject("customPalette");
   cp["hdr"]    = hexColor(cfg.customHdr);
-  cp["accent"] = hexColor(cfg.customAccent);
-  cp["panel"]  = hexColor(cfg.customPanel);
+  cp["accent"] = hexColor(cfg.customPanel);
+  cp["panel"]  = hexColor(cfg.customAccent);
 
   JsonArray wt = doc.createNestedArray("waitThresholds");
   wt.add(cfg.waitTh1); wt.add(cfg.waitTh2); wt.add(cfg.waitTh3);
@@ -1060,13 +1079,13 @@ void ConfigWebServer::handleSaveConfig() {
     if (pal < 0 || pal >= COLOR_PALETTE_COUNT) pal = 0;
     _cfgMgr.savePalette((uint8_t)pal);
 
-    // Custom palette colours (header / accent / panel). Missing keys keep the
+    // Custom palette colours (header / panel / accent). Missing keys keep the
     // current values; malformed hex falls back per parseHexColor.
     JsonObject cp = doc["customPalette"].as<JsonObject>();
     if (!cp.isNull()) {
       uint32_t ch  = parseHexColor(cp["hdr"].as<const char*>(),    cur.customHdr);
-      uint32_t ca  = parseHexColor(cp["accent"].as<const char*>(), cur.customAccent);
-      uint32_t cpn = parseHexColor(cp["panel"].as<const char*>(),  cur.customPanel);
+      uint32_t ca  = parseHexColor(cp["accent"].as<const char*>(), cur.customPanel);
+      uint32_t cpn = parseHexColor(cp["panel"].as<const char*>(),  cur.customAccent);
       _cfgMgr.saveCustomPalette(ch, ca, cpn);
     }
 
