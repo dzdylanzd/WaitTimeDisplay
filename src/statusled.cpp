@@ -36,5 +36,7 @@ void StatusLed::off() {
 }
 
 void StatusLed::writeRGB(uint8_t r, uint8_t g, uint8_t b) {
-  rgbLedWrite(RGB_LED_PIN, r, g, b);   // ESP32 core builtin (RMT-driven)
+  // This board's onboard WS2812 has red/green swapped vs. the core's GRB
+  // default (see espressif/esp-idf#17995 — known Waveshare LED-batch quirk).
+  rgbLedWrite(RGB_LED_PIN, g, r, b);   // ESP32 core builtin (RMT-driven)
 }

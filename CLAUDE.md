@@ -89,7 +89,7 @@ Creates eight global singletons (incl. `StatusLed` and `Button`), wires them tog
 | `src/tzhelper.cpp/h` | NTP sync via `configTzTime()` (mapping table lives in tzposix.h), `getLocalMinutesOfDay()`/`getLocalDateString()` for quiet hours, showtimes and park hours. |
 | `src/trendstore.cpp/h` | RAM-only wait-time history keyed by int32 (250 entries; ride UUIDs hashed via `fnv1a32`) — powers the ↑/↓ trend arrow. 5-min threshold; closed observations neither update nor report. |
 | `src/ridefilter.cpp/h` | Pure `applyDisplayOptions()`: skip-closed (hides Down/Closed/Refurbishment AND shows with no remaining showtime) / min-wait (attractions only) filtering (reverts if it would empty the list) + favorites-first / wait-desc stable sort. |
-| `src/statusled.cpp/h` | Onboard WS2812 (GPIO8, `neopixelWrite`) mirrors the current ride's wait-level colour; brightness tracks the backlight. Can be disabled entirely via the web UI (`ledEnabled`). |
+| `src/statusled.cpp/h` | Onboard WS2812 (GPIO8, `rgbLedWrite` — Arduino-ESP32 3.x's RMT-driven successor to `neopixelWrite`, same `(pin, r, g, b)` signature) mirrors the current ride's wait-level colour; brightness tracks the backlight. Can be disabled entirely via the web UI (`ledEnabled`). |
 | `src/button.cpp/h` | BOOT button (GPIO9, active-low): debounced short press = next ride, 700 ms long press = next park, 10 s hold = factory-reset warning screen, 20 s hold = factory reset + restart (release during the warning cancels). `update()` is a pure, tested state machine. |
 | `src/waitlevel.h` | Shared `pickWaitLevel()` enum — single source of the wait-level bucketing for display themes AND the LED (thresholds default 15/30/45, user-configurable). Status overload: Down → Red, Closed/Refurbishment → Closed level. |
 | `src/quiethours.h` | Pure `inQuietWindow()` (handles overnight wrap; start==end = never quiet). |
@@ -244,7 +244,7 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 | Stub | Replaces | Notes |
 |---|---|---|
-| `Arduino.h` | ESP32 Arduino core | `String`, `millis()`, `delay()`, `Serial`, GPIO no-ops (`pinMode`, `digitalRead`→HIGH, `neopixelWrite`). NOTE: deliberately does NOT define `INPUT`/`OUTPUT` macros — `INPUT` is a winuser.h struct type. |
+| `Arduino.h` | ESP32 Arduino core | `String`, `millis()`, `delay()`, `Serial`, GPIO no-ops (`pinMode`, `digitalRead`→HIGH, `rgbLedWrite`). NOTE: deliberately does NOT define `INPUT`/`OUTPUT` macros — `INPUT` is a winuser.h struct type. |
 | `WiFi.h` | `<WiFi.h>` | 1.5 s connection delay; `localIP()` returns `"localhost:8080"` |
 | `wifi_sim.cpp` | — | `WiFiClass WiFi` singleton definition |
 | `wifimgr_sim.cpp` | `src/wifimgr.cpp` | Credentials always "configured"; `connect()` calls `WiFi.begin()` |
