@@ -1,0 +1,366 @@
+{
+  "_queuewatch": true,
+  "fwVersion": "1.5.6",
+  "apiRefreshInterval": 900,
+  "rotateInterval": 10,
+  "closedParkDisplayTime": 5,
+  "timeUpdateInterval": 20,
+  "enabledParks": [
+    {
+      "id": "9e938687-fd99-46f3-986a-1878210378f8",
+      "name": "Parc Asterix"
+    },
+    {
+      "id": "ca888437-ebb4-4d50-aed2-d227f7096968",
+      "name": "Disney Adventure World"
+    },
+    {
+      "id": "dae968d5-630d-4719-8b06-3d107e944401",
+      "name": "Disneyland Park"
+    },
+    {
+      "id": "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42",
+      "name": "Tokyo Disneyland"
+    },
+    {
+      "id": "67b290d5-3478-4f23-b601-2f8fb71ba803",
+      "name": "Tokyo DisneySea"
+    },
+    {
+      "id": "eb3f4560-2383-4a36-9152-6b3e5ed6bc57",
+      "name": "Universal Studios Florida"
+    },
+    {
+      "id": "12dbb85b-265f-44e6-bccf-f1faa17211fc",
+      "name": "Universal Epic Universe"
+    },
+    {
+      "id": "267615cc-8943-4c2a-ae2c-5da728ca591f",
+      "name": "Universal Islands of Adventure"
+    },
+    {
+      "id": "75ea578a-adc8-4116-a54d-dccb60765ef9",
+      "name": "Magic Kingdom Park"
+    },
+    {
+      "id": "288747d1-8b4f-4a64-867e-ea7c9b27bad8",
+      "name": "Disney's Hollywood Studios"
+    },
+    {
+      "id": "1c84a229-8862-4648-9c71-378ddd2c7693",
+      "name": "Disney's Animal Kingdom Theme Park"
+    },
+    {
+      "id": "47f90d2c-e191-4239-a466-5892ef59a88b",
+      "name": "EPCOT"
+    },
+    {
+      "id": "abb67808-61e3-49ef-996c-1b97ed64fac6",
+      "name": "Phantasialand"
+    },
+    {
+      "id": "f4bd1a23-44f0-444b-a91c-8d24f6ec5b1f",
+      "name": "Attractiepark Toverland"
+    },
+    {
+      "id": "30713cf6-69a9-47c9-a505-52bb965f01be",
+      "name": "Efteling"
+    }
+  ],
+  "currentParkId": "9e938687-fd99-46f3-986a-1878210378f8",
+  "rideFilters": {
+    "9e938687-fd99-46f3-986a-1878210378f8": [
+      "445a2ffc7c9c4c92bd01e2b574a86513",
+      "9fcf7703721c404ca2e0300fdbf8db15",
+      "04327c9ad3b547998c7b1581159fb3af",
+      "ec6f1090c071468f9ae5c4aa7c329f2f",
+      "1db368030a8449aabdf9588d9f31cf89",
+      "f355992d6526477a864b5274bc3c2bff",
+      "5423b87fbb544abca7923e2c11b548f2",
+      "f5e192b38d9c4bdfa4dfcb283ab56303",
+      "2e468e8fa6ee47c7b245fc7b1aa490f4",
+      "61e5ceae214f40db91376132a407109d",
+      "72dd80e0451344ca822e45c9061cbe33"
+    ],
+    "ca888437-ebb4-4d50-aed2-d227f7096968": [
+      "f0d4b531e291471b952700410c2bbd65",
+      "73e1c590ef8f496cbf6cd7e7fde0c7df",
+      "d2ec9363a2154904b297b66734ea9a00",
+      "ff2e7d6f5aaf47b8869553a66e9fe073",
+      "f710814b232d4469aad7d98b328a15b7",
+      "630e2675f9fc4984ba8303daf5fc89ed",
+      "15bad9c383784ac5ab902f8d0ee09d26",
+      "337bce7757bd49c783d7662f16c162ea",
+      "0f5cce1d69ed4fad9505a1914dd150cb",
+      "72d20d9c1f464866b9b9b428d0aaf6e8",
+      "e3b0aefc583442759e6cd97b8ee71a6b"
+    ],
+    "dae968d5-630d-4719-8b06-3d107e944401": [
+      "852d957c382e4afbbb7470c9a79055df",
+      "14f756d6d6fa42008b41db84ba294fa6",
+      "0d822af0bf0247a7bc29672d2fa4f7ab",
+      "ddca340c7ba14f2389eb0d3d52c84bda",
+      "5d0ce2277ad04402a95b6cf56f25a8ec",
+      "7c5b2c2d10824e5cb155dc492db16e6e",
+      "ce87a0fec644475eabb69727e05cebff",
+      "03992704698d474ba721a5ac3498edb9",
+      "5d10b8b27d344794885776688e5864bc",
+      "777518c21c6548ba94a1e19583c44bf5",
+      "7d0660a9cc0845c09ab72699f5369771",
+      "78abb817456441e2b0defa0df34664c1"
+    ],
+    "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42": [
+      "e76670f09f5f491884919bf51e73a596",
+      "a88464b52cf54ef1b38f96e07b233bf2",
+      "dfe25d8ee2344020a26130c6825d0680",
+      "e3577b4af1d94ec5aacfb99977ea88c9",
+      "8fce6b54e3e440bba57493c8327c3fab",
+      "4ed6a812df044aa8acb9c6b164dbb706",
+      "ca00a0e8f0694d0a9d5e10cb63010956",
+      "52eb0fc9585349c88c721e5e83aae1c1",
+      "e541ad8f1457469a8f35457555f475ad",
+      "e08874153da2458c8b880691e6b8ab63",
+      "0de1b54346fd4c3f81c831d0cab9ef63"
+    ],
+    "67b290d5-3478-4f23-b601-2f8fb71ba803": [
+      "c8526be3e82c4692ae44e8f2d1142c8a",
+      "4ca7254c7abc4e5282e09c562c096494",
+      "abb5d6ec469e4ab086855f04e9749653",
+      "3407ebacc5754c31b7941d271014d303",
+      "f66e072d8bab48e5b8cf6d1947bd291b",
+      "dd942cd2b3644262af12ca1a5012528b",
+      "9fb0c97cebf74c258ea7a3f4fe2aa9ec",
+      "c15da0f5966848eeb93a8b737b6acf5b",
+      "63ef07eb9bfb4782885ecfd08ced82f0",
+      "179e4e8226ed4b04bf21f03808b61df4"
+    ],
+    "eb3f4560-2383-4a36-9152-6b3e5ed6bc57": [
+      "70ac72a396754c41a1b1e4801072927a",
+      "ec25d9a7b4d44ebfa6c4c18389351764",
+      "91cae29364f848b688ec02dcfcdd1f91",
+      "7e70bc9e7dce4dd2882357b8d6ec7570",
+      "750939c5a69e408a8d5566c272fa265e",
+      "1e16afdd15e34e4ab3af8aeebd7534f8",
+      "7288f24a396e4eebbb3b4a90e65269f2",
+      "2436bad1f31944d598aca283b81956c6",
+      "1cf7e8a5661144a9acf1fbff7a835056",
+      "335480e231104e40b7e05f078fedd7af"
+    ],
+    "12dbb85b-265f-44e6-bccf-f1faa17211fc": [
+      "447033ceee1f4ccabb1247d22583ac12",
+      "dbc4f0d8fdef4dfca1c233917f742f40",
+      "43df71bfaa7c46c0925c46f69d8bf23f",
+      "1fda5e1f87124165a81dad74eef3e8ee",
+      "eaca831dbcbb4a1e9bf06ea97ccc88e0",
+      "c6b1b8cf55ef416cb00de469993617b0",
+      "dd8c015d511f47d4b98b18ce15735588",
+      "00feb57b4fcc48bc9490c9af71f30c1c",
+      "e3dd1ecdf6744aa783d99c7b4a8c886d",
+      "9c409ec9a805456c96fcd867cc5bc81b"
+    ],
+    "267615cc-8943-4c2a-ae2c-5da728ca591f": [
+      "61079a3141654fb0b36fc01c5971f80a",
+      "578bbd1219754ec39879ea641c780342",
+      "6af80308647d4d8bbcf637517a93bdbc",
+      "fa743143281b4b5bb87bd49fcb006772",
+      "6be231787d0048849e8876787da1df86",
+      "370ba4d1f1994dc2be6d6bb09b442891",
+      "db5b216515c24e518bd1611e9c351866",
+      "2f95b213daaa43708349c2cd57be470e",
+      "23b613e0ae83455b9163231bdbd5c427",
+      "b4445a1c4d5c4fcaa04af8867f1b6619",
+      "28f411b9dacc47b19596bd1383ce730d"
+    ],
+    "75ea578a-adc8-4116-a54d-dccb60765ef9": [
+      "9d4d5229714244b6b4fb528920969a2c",
+      "5a43d1a7ad534d25abfe25625f0da304",
+      "b2260923931540fd9c6b44dd811dbe64",
+      "de3309ca97d54211bffe739fed47e92f",
+      "73cb9445069547a387ced08ae36b5f3c",
+      "2551a77d023f4ab19a198afec0190f39",
+      "352feb94e52e45eb9c92e4b44c6b1a9d",
+      "796b0a25c51e456e9bb850a324e301b3",
+      "86a412735f154b5493b6829f140e5161",
+      "72c7343af7fb4f6695dfc91016de7338",
+      "f5aad2d4a4194384bd9a42f86385c750",
+      "22b78ed9a69247cbb6a46d1224ff67e3",
+      "ee56b2f3fd494a29ae1a2d321549a633",
+      "d69261dc62b8434c83bd93649b43c408"
+    ],
+    "288747d1-8b4f-4a64-867e-ea7c9b27bad8": [
+      "1a2e70d950d54140b69e799e950f7d18",
+      "399aa0a198e24d2bb2972b451e9665e1",
+      "6f6998e8a629412cb9642cb06af8e26b",
+      "e516f303e82d4fd38fbf8e6ab624cf89",
+      "34c4916b989b4ff1a7e3a6a846a3484f",
+      "6e118e375002408d9d880b5d9cdb5d14",
+      "20b5daa8e1ea436f830c2d7d18d929b5",
+      "3b2904198ca244bca710a6c83fca76ec",
+      "d56506e26ad3443a8065fea37987248d",
+      "42328c3976ab4f03b8624206c8d9f7bb",
+      "7357772c6b114a8daf9705a1bb45f001",
+      "375197ac27ac41f7bd93f4e9b9fc4d5d"
+    ],
+    "1c84a229-8862-4648-9c71-378ddd2c7693": [
+      "24cf863cb6ba4826a0560b698989cbf7",
+      "7a5af3b79bc1496292d03ea9c9ce35f0",
+      "64a6915fa8354226ba5c8389fc4cade3",
+      "32e011819a5f49368a770dace1de836c",
+      "d58d9262ec95416180a007ca43b2f5f3",
+      "1b15c77b031141718e597f38e6d60754",
+      "3a4e0f49f9ff4481a95bd4952cdf6097",
+      "95712b31ceed4f7dbe3e3d5e6badac5c",
+      "d8214ba622a74a928977bae3779d5c4c"
+    ],
+    "47f90d2c-e191-4239-a466-5892ef59a88b": [
+      "e3549451b284453d9c31e3b1207abd79",
+      "37ae57c5feaf4e478f274b385be200f0",
+      "1e735ffb486847f1b2cd2ac1156cd5f0",
+      "8d7ccdb1a22b4e268dc865b1938ed5f0",
+      "81b15dfdcf6a466fbe593dd65d2a2807",
+      "5b6475ad4e9a4793b841501aa382c9c0",
+      "480fde8ffe584bfbb3ab052a39d4db7c",
+      "8f353879d6ac421193524029efb47c18",
+      "dae68deedfba4128b5946aa12add1070",
+      "3dbf1ff2eee044a98cd922bf920e81e9"
+    ],
+    "abb67808-61e3-49ef-996c-1b97ed64fac6": [
+      "ad215bc192ca4c939c7ccd035f19bb14",
+      "b0a46890be184291a6cbaa99587607ff",
+      "abadd16c30684d8db0e716ae920e34bb",
+      "1e88524dc13c4342921b8df472e049aa",
+      "396916b00d054c51a82d41382746c55e",
+      "8254b0584f594bd8854967b4b7012486",
+      "94737247be0e4f2687e9f39acb333de5",
+      "d1e5e18dbf284891b0ed247fdb1ac37b",
+      "92b86a074e9b49418b702447d88bc73a",
+      "48c120e2143541d3b94215c805ceed90",
+      "5e27833c66cd4b32b66ea699b1df83b0",
+      "8de3145a8e7d4682837062db04e15856",
+      "3e64775d1519418d92dbd460426c11b7",
+      "75adabe120f04bb398d5fc962f281df0",
+      "0f49f65f985d4b8f89f0da057a331d1b"
+    ],
+    "f4bd1a23-44f0-444b-a91c-8d24f6ec5b1f": [
+      "21190381a4744f80a46cbbceabde91d5",
+      "7eebd9b6b0934330a81ef6fd5e8943e7",
+      "60c5b950e8e14fe28c1d8f97962d4688",
+      "3976067079294f29a7bd83a5d12f5302",
+      "cbb6038c8f4d42439636a9dd2fb53592",
+      "a4de6cfd3014475b868c822ef7d84bf5",
+      "1374eec49bad49e5831412031f44fb90",
+      "dda7717ee4b44cf1ac251a6372075294"
+    ],
+    "30713cf6-69a9-47c9-a505-52bb965f01be": [
+      "b6b1ed81620b4994a65be6a0a123fa0f",
+      "de36a8e78c57459e87864e63e24427d1",
+      "1f356f6c203348bbb2d1761c73441ac1",
+      "4b4a127f764c4106a705d3c47fb8b361",
+      "5db59b64d2cd4211a1fab4369b6e110a",
+      "c01374540e1f451e85bdaef4f443c51e",
+      "5e55ad4ad288451f9185a301bc3d2757",
+      "bd02be82ce774c388c8d567df7810648",
+      "1fdcb9bd7ce34b23a89cb6d5f338cae9",
+      "a59b1021ae844a11a93f545553f5e568",
+      "454f83b8b76744a9a911e650901e4520",
+      "96f50f4d04524d258763c34d2da4353e",
+      "2ce42f6a0f0c471b97063a9c6007bda0",
+      "47784759d88d439f9f146bf0206aa722",
+      "d724c3aec4a141169ae64cf0407a28f1"
+    ]
+  },
+  "rideFavorites": {
+    "9e938687-fd99-46f3-986a-1878210378f8": [
+      "445a2ffc7c9c4c92bd01e2b574a86513",
+      "04327c9ad3b547998c7b1581159fb3af"
+    ],
+    "ca888437-ebb4-4d50-aed2-d227f7096968": [
+      "f0d4b531e291471b952700410c2bbd65",
+      "73e1c590ef8f496cbf6cd7e7fde0c7df"
+    ],
+    "dae968d5-630d-4719-8b06-3d107e944401": [
+      "852d957c382e4afbbb7470c9a79055df",
+      "ddca340c7ba14f2389eb0d3d52c84bda"
+    ],
+    "3cc919f1-d16d-43e0-8c3f-1dd269bd1a42": [
+      "a88464b52cf54ef1b38f96e07b233bf2",
+      "e76670f09f5f491884919bf51e73a596"
+    ],
+    "67b290d5-3478-4f23-b601-2f8fb71ba803": [
+      "c8526be3e82c4692ae44e8f2d1142c8a",
+      "3407ebacc5754c31b7941d271014d303"
+    ],
+    "eb3f4560-2383-4a36-9152-6b3e5ed6bc57": [
+      "70ac72a396754c41a1b1e4801072927a",
+      "ec25d9a7b4d44ebfa6c4c18389351764"
+    ],
+    "12dbb85b-265f-44e6-bccf-f1faa17211fc": [
+      "447033ceee1f4ccabb1247d22583ac12",
+      "dbc4f0d8fdef4dfca1c233917f742f40"
+    ],
+    "267615cc-8943-4c2a-ae2c-5da728ca591f": [
+      "61079a3141654fb0b36fc01c5971f80a",
+      "578bbd1219754ec39879ea641c780342"
+    ],
+    "75ea578a-adc8-4116-a54d-dccb60765ef9": [
+      "9d4d5229714244b6b4fb528920969a2c",
+      "5a43d1a7ad534d25abfe25625f0da304"
+    ],
+    "288747d1-8b4f-4a64-867e-ea7c9b27bad8": [
+      "1a2e70d950d54140b69e799e950f7d18",
+      "399aa0a198e24d2bb2972b451e9665e1"
+    ],
+    "1c84a229-8862-4648-9c71-378ddd2c7693": [
+      "24cf863cb6ba4826a0560b698989cbf7",
+      "64a6915fa8354226ba5c8389fc4cade3"
+    ],
+    "47f90d2c-e191-4239-a466-5892ef59a88b": [
+      "e3549451b284453d9c31e3b1207abd79",
+      "37ae57c5feaf4e478f274b385be200f0"
+    ],
+    "abb67808-61e3-49ef-996c-1b97ed64fac6": [
+      "ad215bc192ca4c939c7ccd035f19bb14",
+      "abadd16c30684d8db0e716ae920e34bb"
+    ],
+    "f4bd1a23-44f0-444b-a91c-8d24f6ec5b1f": [
+      "21190381a4744f80a46cbbceabde91d5",
+      "7eebd9b6b0934330a81ef6fd5e8943e7"
+    ],
+    "30713cf6-69a9-47c9-a505-52bb965f01be": [
+      "b6b1ed81620b4994a65be6a0a123fa0f",
+      "de36a8e78c57459e87864e63e24427d1"
+    ]
+  },
+  "brightness": 30,
+  "quietEnabled": false,
+  "quietStart": "22:00",
+  "quietEnd": "07:00",
+  "quietBrightness": 0,
+  "ledEnabled": true,
+  "flipScreen": false,
+  "deviceTimezone": "",
+  "colorPalette": 19,
+  "customPalette": {
+    "hdr": "#2a0860",
+    "accent": "#160a34",
+    "panel": "#c89e20"
+  },
+  "waitThresholds": [
+    15,
+    30,
+    45
+  ],
+  "waitColors": [
+    "#00e676",
+    "#ffd600",
+    "#ff7043",
+    "#ff1744",
+    "#18ffff"
+  ],
+  "rideOptions": {
+    "sortMode": 0,
+    "favoritesFirst": true,
+    "skipClosed": false,
+    "minWait": 0
+  }
+}

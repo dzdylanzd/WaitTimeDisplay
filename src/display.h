@@ -34,7 +34,8 @@ public:
   void begin();
   void drawBackground();
   void drawParkName(const String& parkName, bool force);
-  void setParkCountry(const String& country);  // shown small above the clock
+  void setHeaderInfo(const String& info);  // small label above the clock
+                                           // (today's park hours; "" hides it)
   void setRideCount(int count);
   void drawProgressBar(int currentIdx, int totalCount, bool favorite = false);
   void displayRide(const RideInfo& ride, int rideIdx = 0);
@@ -50,7 +51,9 @@ public:
   // until it returns.
   void showOtaDownloading(uint8_t progressPct);
   void showOtaInstalling();         // painted just before Update.end() + restart
-  void showClosedPark(const String& parkName);
+  // subText overrides the wait panel's sub-label when non-empty (e.g.
+  // "OPENS 09:00" from the park schedule); default: "PARK IS CLOSED TODAY".
+  void showClosedPark(const String& parkName, const String& subText = "");
   void showCaptivePortalInfo(const char* apName, const char* apPass);
   void showStartupInfo(const String& ipAddress);
   void showConnectingScreen(int dotCount);
@@ -79,11 +82,13 @@ private:
   // ---- State tracking ----
   int    _rideCount    = 0;
   String _lastParkName;
-  String _parkCountry;
+  String _headerInfo;
   String _lastRideName;
   String _lastLand;
   int    _lastWaitTime = -999;
-  bool   _lastIsOpen   = false;
+  RideStatus _lastStatus  = RideStatus::Closed;
+  EntityKind _lastKind    = EntityKind::Attraction;
+  int16_t    _lastShowMin = -1;
   int    _lastRideIdx  = -1;
   int8_t _lastTrend    = 0;
   bool   _lastFavorite = false;
@@ -92,7 +97,7 @@ private:
   // ---- Main ride screen ----
   lv_obj_t* _scrMain       = nullptr;
   lv_obj_t* _lblPark       = nullptr;
-  lv_obj_t* _lblCountry    = nullptr;  // small country name above the clock
+  lv_obj_t* _lblHeaderInfo = nullptr;  // small info line above the clock (park hours)
   lv_obj_t* _lblTime       = nullptr;
   lv_obj_t* _barProgress   = nullptr;
   lv_obj_t* _lblRideIdx    = nullptr;

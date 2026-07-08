@@ -22,6 +22,7 @@ add_executable(queuewatch_tests
     ${TESTS_DIR}/test_ridefilter.cpp
     ${TESTS_DIR}/test_button.cpp
     ${TESTS_DIR}/test_waitlevel.cpp
+    ${TESTS_DIR}/test_idhash.cpp
     ${TESTS_DIR}/test_appstate_logic.cpp
     # test_cfgserver.cpp and test_tzhelper.cpp #include their corresponding
     # src/*.cpp directly (internal-linkage helpers aren't otherwise
@@ -59,6 +60,7 @@ target_include_directories(queuewatch_tests PRIVATE
 target_compile_definitions(queuewatch_tests PRIVATE
     _CRT_SECURE_NO_WARNINGS
     ARDUINOJSON_ENABLE_ARDUINO_STRING=1
+    ARDUINOJSON_ENABLE_STD_STREAM=1
 )
 
 if(MSVC)
@@ -90,6 +92,7 @@ target_include_directories(queuewatch_live_tests PRIVATE
 target_compile_definitions(queuewatch_live_tests PRIVATE
     _CRT_SECURE_NO_WARNINGS
     ARDUINOJSON_ENABLE_ARDUINO_STRING=1
+    ARDUINOJSON_ENABLE_STD_STREAM=1
 )
 
 target_link_libraries(queuewatch_live_tests PRIVATE winhttp)

@@ -61,6 +61,7 @@ private:
   static void otaProgressThunk(size_t written, size_t total);
 
   bool allRidesClosed() const;
+  void showClosedParkScreen(int nowMin);
   void applyRideFilter();
   void annotateRides();
   void applyRideDisplayOptions();
@@ -106,7 +107,7 @@ private:
   int      _rideCount = 0;
   int      _currentRideIndex = 0;
   int      _currentParkIndex = 0;
-  int      _currentParkId = 0;
+  String   _currentParkId;             // dashed themeparks.wiki UUID
   String   _currentParkName;
   String   _currentTimezone = "UTC";
 
@@ -132,6 +133,12 @@ private:
   bool         _startupScreenShown = false;
   bool         _showingClosedPark  = false;
   unsigned long _closedParkStart   = 0;
+  // Today's operating window for the current park (refetched per park load;
+  // date-stamped, so QueueApi refreshes it when the day rolls over) and
+  // whether the closed screen is up because the schedule says so — that
+  // suppresses /live polling until opening time (single-park case).
+  ParkHours    _parkHours;
+  bool         _closedBySchedule   = false;
 
   TrendStore    _trends;
   uint8_t       _lastAppliedBrightness = 0;

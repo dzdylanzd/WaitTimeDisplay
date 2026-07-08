@@ -297,8 +297,8 @@ static void rebuildWaitThemes() {
 #define T_RED    (WAIT_THEMES[(int)WaitLevel::Red])
 #define T_TEAL   (WAIT_THEMES[(int)WaitLevel::Closed])
 
-static const WaitTheme& pickTheme(int waitTime, bool isOpen) {
-    return WAIT_THEMES[(int)pickWaitLevel(waitTime, isOpen,
+static const WaitTheme& pickTheme(int waitTime, RideStatus status) {
+    return WAIT_THEMES[(int)pickWaitLevel(waitTime, status,
                                           WAIT_TH1, WAIT_TH2, WAIT_TH3)];
 }
 
@@ -427,11 +427,11 @@ void DisplayController::_buildMainScreen() {
                          &lv_font_montserrat_16, C_PARK_TXT,
                          LV_TEXT_ALIGN_LEFT, LV_LABEL_LONG_SCROLL_CIRCULAR);
 
-    // Right side, two rows: small country (where the clock's time is from)
-    // above the park-local time.
-    _lblCountry = makeLabel(hdr, 0, 3, SCR_W - 8, 13,
-                            &lv_font_montserrat_12, C_IDX_TXT,
-                            LV_TEXT_ALIGN_RIGHT);
+    // Right side, two rows: small info line (today's park hours) above the
+    // park-local time.
+    _lblHeaderInfo = makeLabel(hdr, 0, 3, SCR_W - 8, 13,
+                               &lv_font_montserrat_12, C_IDX_TXT,
+                               LV_TEXT_ALIGN_RIGHT);
 
     _lblTime = makeLabel(hdr, 0, 17, SCR_W - 8, 17,
                          &lv_font_montserrat_16, C_TIME_TXT,
@@ -596,8 +596,16 @@ void DisplayController::_loadPortal() {
 // ---------------------------------------------------------------------------
 // _applyWaitWidgets
 // ---------------------------------------------------------------------------
+// Shows use the calm green "info" theme while another performance is coming
+// up (time-based wait bucketing is meaningless for them), teal when done.
+static const WaitTheme& themeForRide(const RideInfo& ride) {
+    if (ride.kind == EntityKind::Show)
+        return (ride.nextShowMin >= 0) ? T_GREEN : T_TEAL;
+    return pickTheme(ride.waitTime, ride.status);
+}
+
 void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
-    const WaitTheme& th = pickTheme(ride.waitTime, ride.isOpen);
+    const WaitTheme& th = themeForRide(ride);
 
     // Solid themed background on wait panel
     lv_obj_set_style_bg_color(_objWaitPanel, th.bgBot, LV_PART_MAIN);
@@ -610,12 +618,32 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
 
     // Wait number / text
     lv_obj_set_style_text_font(_lblWaitNum, &lv_font_montserrat_48, LV_PART_MAIN);
-    if (!ride.isOpen) {
+    if (ride.kind == EntityKind::Show) {
+        if (ride.nextShowMin >= 0) {
+            char hhmm[6];
+            snprintf(hhmm, sizeof(hhmm), "%02d:%02d",
+                     ride.nextShowMin / 60, ride.nextShowMin % 60);
+            lv_label_set_text(_lblWaitNum, hhmm);
+            lv_label_set_text(_lblWaitSub, "NEXT SHOW");
+        } else {
+            lv_label_set_text(_lblWaitNum, "DONE");
+            lv_label_set_text(_lblWaitSub, "NO MORE SHOWS TODAY");
+        }
+    } else if (ride.status == RideStatus::Down) {
+        lv_label_set_text(_lblWaitNum, "DOWN");
+        lv_label_set_text(_lblWaitSub, "TEMPORARILY CLOSED");
+    } else if (ride.status == RideStatus::Refurbishment) {
+        lv_label_set_text(_lblWaitNum, "REFURB");
+        lv_label_set_text(_lblWaitSub, "UNDER REFURBISHMENT");
+    } else if (!ride.isOpen()) {
         lv_label_set_text(_lblWaitNum, "CLOSED");
         lv_label_set_text(_lblWaitSub, "NOT OPERATING");
     } else if (ride.waitTime < 0) {
-        lv_label_set_text(_lblWaitNum, "---");
-        lv_label_set_text(_lblWaitSub, "NO DATA");
+        // Operating but publishes no standby queue — walkthroughs,
+        // playgrounds, transport rides (themeparks.wiki lists these;
+        // queue-times never did). "Open" beats a scary "NO DATA".
+        lv_label_set_text(_lblWaitNum, "OPEN");
+        lv_label_set_text(_lblWaitSub, "NO QUEUE TIME");
     } else {
         char num[8];
         snprintf(num, sizeof(num), "%d", ride.waitTime);
@@ -624,8 +652,9 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
     }
 
     // Trend arrow: red rising (wait getting worse), green falling. Hidden
-    // when flat or closed. Arrow glyphs ship in every Montserrat font.
-    if (!ride.isOpen || ride.trend == 0) {
+    // when flat, closed, or for shows (no wait to trend). Arrow glyphs ship
+    // in every Montserrat font.
+    if (ride.kind == EntityKind::Show || !ride.isOpen() || ride.trend == 0) {
         lv_label_set_text(_lblTrend, "");
     } else {
         int deltaAbs = ride.trendDelta < 0 ? -ride.trendDelta : ride.trendDelta;
@@ -638,7 +667,9 @@ void DisplayController::_applyWaitWidgets(const RideInfo& ride) {
     }
 
     _lastWaitTime = ride.waitTime;
-    _lastIsOpen   = ride.isOpen;
+    _lastStatus   = ride.status;
+    _lastKind     = ride.kind;
+    _lastShowMin  = ride.nextShowMin;
     _lastTrend    = ride.trend;
 }
 
@@ -677,10 +708,10 @@ void DisplayController::setRideCount(int count) {
     _rideCount = count;
 }
 
-void DisplayController::setParkCountry(const String& country) {
-    if (country == _parkCountry) return;
-    _parkCountry = country;
-    lv_label_set_text(_lblCountry, country.c_str());   // "" collapses the row
+void DisplayController::setHeaderInfo(const String& info) {
+    if (info == _headerInfo) return;
+    _headerInfo = info;
+    lv_label_set_text(_lblHeaderInfo, info.c_str());   // "" collapses the row
 }
 
 void DisplayController::drawProgressBar(int currentIdx, int totalCount, bool favorite) {
@@ -701,28 +732,37 @@ void DisplayController::drawProgressBar(int currentIdx, int totalCount, bool fav
     _lastFavorite = favorite;
 }
 
+// The ride panel's second row: themeparks.wiki has no themed-land concept,
+// so the row now tags SHOW entities and stays collapsed for attractions.
+static String rowTagFor(const RideInfo& ride) {
+    return ride.kind == EntityKind::Show ? String("SHOW") : String();
+}
+
 void DisplayController::displayRide(const RideInfo& ride, int rideIdx) {
     _loadMain();
     _setRideName(ride.name);
-    _setLand(ride.land);
+    _setLand(rowTagFor(ride));
     if (_rideCount > 0) drawProgressBar(rideIdx, _rideCount, ride.favorite);
     _applyWaitWidgets(ride);
     _lastRideIdx = rideIdx;
 }
 
 void DisplayController::updateRideIfChanged(const RideInfo& ride, int rideIdx) {
+    const String rowTag    = rowTagFor(ride);
     const bool nameChanged = (ride.name != _lastRideName);
-    const bool landChanged = (ride.land != _lastLand);
+    const bool landChanged = (rowTag != _lastLand);
     const bool idxChanged  = (rideIdx  != _lastRideIdx ||
                               ride.favorite != _lastFavorite);
     const bool waitChanged = (ride.waitTime != _lastWaitTime ||
-                              ride.isOpen   != _lastIsOpen   ||
+                              ride.status   != _lastStatus   ||
+                              ride.kind     != _lastKind     ||
+                              ride.nextShowMin != _lastShowMin ||
                               ride.trend    != _lastTrend);
 
     if (!nameChanged && !landChanged && !idxChanged && !waitChanged) return;
 
     if (nameChanged) _setRideName(ride.name);
-    if (landChanged) _setLand(ride.land);
+    if (landChanged) _setLand(rowTag);
     if (idxChanged && _rideCount > 0) {
         drawProgressBar(rideIdx, _rideCount, ride.favorite);
         _lastRideIdx = rideIdx;
@@ -779,7 +819,7 @@ void DisplayController::applyPalette(uint8_t paletteId) {
     static const PaletteBinding kBindings[] = {
         { &DisplayController::_pnlHdr,        &UiPalette::hdrBg,    lv_obj_set_style_bg_color   },
         { &DisplayController::_lblPark,       &UiPalette::parkTxt,  lv_obj_set_style_text_color },
-        { &DisplayController::_lblCountry,    &UiPalette::idxTxt,   lv_obj_set_style_text_color },
+        { &DisplayController::_lblHeaderInfo, &UiPalette::idxTxt,   lv_obj_set_style_text_color },
         { &DisplayController::_lblTime,       &UiPalette::timeTxt,  lv_obj_set_style_text_color },
         { &DisplayController::_barProgress,   &UiPalette::track,    lv_obj_set_style_bg_color   },
         { &DisplayController::_pnlRide,       &UiPalette::rideBg,   lv_obj_set_style_bg_color   },
@@ -969,20 +1009,23 @@ void DisplayController::showOtaInstalling() {
     lv_refr_now(NULL);
 }
 
-void DisplayController::showClosedPark(const String& parkName) {
+void DisplayController::showClosedPark(const String& parkName,
+                                       const String& subText) {
     _loadMain();
     drawParkName(parkName, true);
-    _setRideName("All rides closed");
+    _setRideName(subText.length() ? "Park closed" : "All rides closed");
     _setLand("");
     lv_bar_set_value(_barProgress, 0, LV_ANIM_OFF);
     lv_label_set_text(_lblRideIdx, "");
 
-    // pickTheme() (inside _applyWaitWidgets) forces the teal Closed theme
-    // whenever isOpen is false, regardless of waitTime — a default
-    // RideInfo (isOpen=false) reuses the same theme/number/trend logic a
+    // themeForRide() (inside _applyWaitWidgets) forces the teal Closed theme
+    // whenever the status isn't Operating, regardless of waitTime — a default
+    // RideInfo (status=Closed) reuses the same theme/number/trend logic a
     // single closed ride uses, instead of re-deriving it here.
     _applyWaitWidgets(RideInfo());
-    lv_label_set_text(_lblWaitSub, "PARK IS CLOSED TODAY");  // more specific than a single ride's "NOT OPERATING"
+    lv_label_set_text(_lblWaitSub, subText.length()
+        ? subText.c_str()
+        : "PARK IS CLOSED TODAY");  // more specific than a single ride's "NOT OPERATING"
 }
 
 void DisplayController::showCaptivePortalInfo(const char* apName, const char* apPass) {

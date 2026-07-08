@@ -1,15 +1,68 @@
 #include "configmanager.h"
+#include "idhash.h"
 #include <ArduinoJson.h>
 
 ConfigManager::ConfigManager() {}
 
+// ---- Per-park ride-selection storage ---------------------------------------
+// Each park's filter (enabled ride ids) and favorites live under their own
+// NVS keys — "rf_XXXXXXXX" / "fv_XXXXXXXX", where XXXXXXXX is the fnv1a32 of
+// the dashed park UUID — as a plain concatenation of 8-hex-char fnv1a32
+// hashes of the (32-char undashed) ride ids. No shared budget, no JSON
+// overhead: a fully-filtered 80-ride park is 640 bytes. Collisions within a
+// park (≤ MAX_RIDES ids against a 32-bit space) are negligible.
+
+static String hex8(uint32_t v) {
+  char buf[9];
+  snprintf(buf, sizeof(buf), "%08x", (unsigned)v);
+  return String(buf);
+}
+
+// "rf_"/"fv_" + hashed park id (NVS keys max 15 chars — this is 11).
+static String selKey(char kind, const String& parkId) {
+  return String(kind == 'f' ? "rf_" : "fv_") + hex8(fnv1a32(parkId.c_str()));
+}
+
+// A ride id arriving from the web UI is a 32-char undashed UUID; one coming
+// back from an exported config file is already an 8-hex hash. Store both as
+// the hash so exports re-import losslessly. (Only an exact 8-char value is
+// treated as pre-hashed — anything else gets hashed, whatever its length.)
+static String rideHash(const char* id) {
+  if (strlen(id) == 8) return String(id);   // already hashed (config import)
+  return hex8(fnv1a32(id));
+}
+
+// True when the 8-hex hash of rideId appears in the concatenated string.
+static bool selectionContains(const String& sel, const String& rideId) {
+  String h = hex8(fnv1a32(rideId.c_str()));
+  for (unsigned i = 0; i + 8 <= sel.length(); i += 8) {
+    if (strncmp(sel.c_str() + i, h.c_str(), 8) == 0) return true;
+  }
+  return false;
+}
+
 void ConfigManager::load() {
-  _prefs.begin(NVS_NAMESPACE, true);
+  // Open read-write: the version migration below may need to delete keys.
+  _prefs.begin(NVS_NAMESPACE, false);
+
+  // Config-version migrations. Pre-v2 park/ride config used queue-times.com
+  // numeric ids, which mean nothing to the themeparks.wiki API — wipe parks
+  // AND filters (the user re-picks once). v2→v3 changed only the filter/
+  // favorite storage (single JSON blob → per-park hashed keys), so enabled
+  // parks survive and just the old blobs are dropped. WiFi credentials,
+  // brightness, palette, quiet hours and timings always survive.
+  int ver = _prefs.getInt("cfg_ver", 1);
+  if (ver < CONFIG_VERSION) {
+    if (ver < 2 && _prefs.isKey("enabled_pks")) _prefs.remove("enabled_pks");
+    if (_prefs.isKey("ride_flt")) _prefs.remove("ride_flt");
+    if (_prefs.isKey("ride_fav")) _prefs.remove("ride_fav");
+    _prefs.putInt("cfg_ver", CONFIG_VERSION);
+  }
+
   _config.apiRefreshInterval    = _prefs.getULong("api_int",    DEFAULT_API_REFRESH_INTERVAL);
   _config.rotateInterval        = _prefs.getULong("rot_int",    DEFAULT_ROTATE_INTERVAL);
   _config.closedParkDisplayTime = _prefs.getULong("closed_int", DEFAULT_CLOSED_PARK_DISPLAY_TIME);
   _config.timeUpdateInterval    = _prefs.getULong("time_int",   DEFAULT_TIME_UPDATE_INTERVAL);
-  _config.rideFiltersJson       = _prefs.getString("ride_flt",  "");
   String parksJson              = _prefs.getString("enabled_pks", "");
 
   _config.brightness        = (uint8_t)_prefs.getInt("brt", 100);
@@ -44,14 +97,14 @@ void ConfigManager::load() {
   _config.favoritesFirst    = _prefs.getBool("fav_first", true);
   _config.skipClosedRides   = _prefs.getBool("skip_closed", false);
   _config.minWaitMinutes    = (uint8_t)_prefs.getInt("min_wait", 0);
-  _config.rideFavoritesJson = _prefs.getString("ride_fav", "");
+  loadSelectionIndex();
   _prefs.end();
 
   if (parksJson.length() > 0) {
     parseEnabledParks(parksJson, _config.enabledParkIds, _config.enabledParkNames);
   }
-  _rideFilterCacheValid = false;
-  _favoriteCacheValid   = false;
+  _filterCache.clear();
+  _favoriteCache.clear();
 }
 
 void ConfigManager::saveTimings(unsigned long apiRefresh,
@@ -79,12 +132,114 @@ void ConfigManager::saveEnabledParks(const String& parksJson) {
   parseEnabledParks(parksJson, _config.enabledParkIds, _config.enabledParkNames);
 }
 
-void ConfigManager::saveRideFilters(const String& filtersJson) {
+// The index of parks that own per-park selection keys, stored as the parks'
+// dashed UUIDs concatenated (36 chars each — no JSON, fixed stride).
+void ConfigManager::loadSelectionIndex() {
+  _selectionIndex.clear();
+  String idx = _prefs.getString("sel_idx", "");
+  for (unsigned i = 0; i + 36 <= idx.length(); i += 36)
+    _selectionIndex.push_back(idx.substring(i, i + 36));
+}
+
+void ConfigManager::storeSelectionIndex() {
+  String idx;
+  for (size_t i = 0; i < _selectionIndex.size(); i++) idx += _selectionIndex[i];
+  if (idx.length() == 0) _prefs.remove("sel_idx");
+  else                   _prefs.putString("sel_idx", idx);
+}
+
+bool ConfigManager::applyRideSelections(JsonObjectConst filters,
+                                        JsonObjectConst favorites,
+                                        const std::vector<String>& keepParkIds,
+                                        String& outError) {
+  outError = "";
   _prefs.begin(NVS_NAMESPACE, false);
-  _prefs.putString("ride_flt", filtersJson);
+
+  bool ok = true;
+  // Two passes over (kind, incoming-object): identical handling.
+  const char kinds[2] = { 'f', 'v' };
+  JsonObjectConst objs[2] = { filters, favorites };
+  for (int k = 0; k < 2 && ok; k++) {
+    if (objs[k].isNull()) continue;
+    for (JsonPairConst kv : objs[k]) {
+      String parkId(kv.key().c_str());
+      if (parkId.length() != 36) continue;          // not a dashed UUID
+      bool keep = false;
+      for (size_t i = 0; i < keepParkIds.size(); i++)
+        if (keepParkIds[i] == parkId) { keep = true; break; }
+      if (!keep) continue;                          // cleanup pass handles it
+
+      String key = selKey(kinds[k], parkId);
+      if (kv.value().isNull()) {                    // null = clear this entry
+        if (_prefs.isKey(key.c_str())) _prefs.remove(key.c_str());
+        continue;
+      }
+      String sel;
+      for (JsonVariantConst v : kv.value().as<JsonArrayConst>()) {
+        const char* id = v.as<const char*>();
+        if (id && *id) sel += rideHash(id);
+      }
+      if (sel.length() == 0) {                      // empty list = no entry
+        if (_prefs.isKey(key.c_str())) _prefs.remove(key.c_str());
+        continue;
+      }
+      if (sel.length() > NVS_JSON_MAX) {            // 475 rides — unreachable
+        outError = "Ride selection too large for park";
+        ok = false;
+        break;
+      }
+      if (_prefs.putString(key.c_str(), sel) != sel.length()) {
+        outError = "Device storage is full - reduce per-ride filters";
+        ok = false;
+        break;
+      }
+      bool indexed = false;
+      for (size_t i = 0; i < _selectionIndex.size(); i++)
+        if (_selectionIndex[i] == parkId) { indexed = true; break; }
+      if (!indexed) _selectionIndex.push_back(parkId);
+    }
+  }
+
+  // Cleanup: drop keys of parks that are no longer enabled.
+  std::vector<String> newIndex;
+  for (size_t i = 0; i < _selectionIndex.size(); i++) {
+    const String& parkId = _selectionIndex[i];
+    bool keep = false;
+    for (size_t j = 0; j < keepParkIds.size(); j++)
+      if (keepParkIds[j] == parkId) { keep = true; break; }
+    if (keep) {
+      newIndex.push_back(parkId);
+    } else {
+      String fk = selKey('f', parkId), vk = selKey('v', parkId);
+      if (_prefs.isKey(fk.c_str())) _prefs.remove(fk.c_str());
+      if (_prefs.isKey(vk.c_str())) _prefs.remove(vk.c_str());
+    }
+  }
+  _selectionIndex = newIndex;
+  storeSelectionIndex();
   _prefs.end();
-  _config.rideFiltersJson = filtersJson;
-  _rideFilterCacheValid = false;
+
+  _filterCache.clear();
+  _favoriteCache.clear();
+  return ok;
+}
+
+void ConfigManager::exportRideSelections(JsonObject outFilters,
+                                         JsonObject outFavorites) const {
+  _prefs.begin(NVS_NAMESPACE, true);
+  for (size_t i = 0; i < _selectionIndex.size(); i++) {
+    const String& parkId = _selectionIndex[i];
+    const char kinds[2] = { 'f', 'v' };
+    JsonObject outs[2] = { outFilters, outFavorites };
+    for (int k = 0; k < 2; k++) {
+      String sel = _prefs.getString(selKey(kinds[k], parkId).c_str(), "");
+      if (sel.length() == 0) continue;
+      JsonArray arr = outs[k].createNestedArray(parkId);
+      for (unsigned p = 0; p + 8 <= sel.length(); p += 8)
+        arr.add(sel.substring(p, p + 8));
+    }
+  }
+  _prefs.end();
 }
 
 void ConfigManager::saveDisplaySettings(uint8_t brightness, bool quietEnabled,
@@ -161,29 +316,20 @@ void ConfigManager::saveRideOptions(uint8_t sortMode, bool favoritesFirst,
   _config.minWaitMinutes  = minWaitMinutes;
 }
 
-void ConfigManager::saveRideFavorites(const String& favoritesJson) {
-  _prefs.begin(NVS_NAMESPACE, false);
-  _prefs.putString("ride_fav", favoritesJson);
-  _prefs.end();
-  _config.rideFavoritesJson = favoritesJson;
-  _favoriteCacheValid = false;
-}
-
 void ConfigManager::factoryReset() {
   // WiFiManager stores its credentials in the same namespace, so clearing
   // it wipes those too — that's the point of a factory reset.
   _prefs.begin(NVS_NAMESPACE, false);
-  _prefs.clear();
+  _prefs.clear();     // includes every per-park rf_/fv_ key and sel_idx
   _prefs.end();
   _config = RuntimeConfig();
-  _rideFilterCache.clear();
-  _rideFilterCacheValid = false;
+  _selectionIndex.clear();
+  _filterCache.clear();
   _favoriteCache.clear();
-  _favoriteCacheValid = false;
 }
 
 bool ConfigManager::parseEnabledParks(const String& json,
-                                       std::vector<int>& outIds,
+                                       std::vector<String>& outIds,
                                        std::vector<String>& outNames) {
   outIds.clear();
   outNames.clear();
@@ -197,85 +343,39 @@ bool ConfigManager::parseEnabledParks(const String& json,
   }
   JsonArray arr = doc.as<JsonArray>();
   for (JsonObject obj : arr) {
-    int id = obj["id"] | -1;
+    const char* id   = obj["id"]   | "";
     const char* name = obj["name"] | "";
-    if (id > 0) {
-      outIds.push_back(id);
+    if (strlen(id) > 0) {
+      outIds.push_back(String(id));
       outNames.push_back(String(name));
     }
   }
   return outIds.size() > 0;
 }
 
-void ConfigManager::rebuildRideFilterCache() const {
-  _rideFilterCache.clear();
-  if (_config.rideFiltersJson.length() == 0) {
-    _rideFilterCacheValid = true;
-    return;
-  }
-  DynamicJsonDocument doc(NVS_JSON_MAX * 3);
-  DeserializationError err = deserializeJson(doc, _config.rideFiltersJson);
-  if (err) {
-    Serial.printf("ConfigManager: failed to parse rideFiltersJson: %s\n", err.c_str());
-    _rideFilterCacheValid = true;
-    return;
-  }
-  JsonObject filters = doc.as<JsonObject>();
-  for (JsonPair kv : filters) {
-    int parkId = atoi(kv.key().c_str());
-    JsonArray enabledIds = kv.value().as<JsonArray>();
-    std::vector<int> ids;
-    for (JsonVariant v : enabledIds) ids.push_back((int)v);
-    _rideFilterCache[parkId] = ids;
-  }
-  _rideFilterCacheValid = true;
+// Lazily fetch (and memoize) one park's selection string from its NVS key.
+// The cache stores "" for parks without a key, so each park costs at most
+// one NVS read per boot.
+const String& ConfigManager::cachedSelection(char kind, const String& parkId,
+                                             std::map<String, String>& cache) const {
+  auto it = cache.find(parkId);
+  if (it != cache.end()) return it->second;
+  _prefs.begin(NVS_NAMESPACE, true);
+  String sel = _prefs.getString(selKey(kind, parkId).c_str(), "");
+  _prefs.end();
+  return cache.emplace(parkId, sel).first->second;
 }
 
-bool ConfigManager::isRideEnabled(int parkId, int rideId) const {
-  if (!_rideFilterCacheValid) rebuildRideFilterCache();
-  if (_rideFilterCache.empty()) return true;
-  auto it = _rideFilterCache.find(parkId);
-  if (it == _rideFilterCache.end()) return true;
-  const std::vector<int>& enabledIds = it->second;
-  for (size_t i = 0; i < enabledIds.size(); i++) {
-    if (enabledIds[i] == rideId) return true;
-  }
-  return false;
+bool ConfigManager::isRideEnabled(const String& parkId, const String& rideId) const {
+  const String& sel = cachedSelection('f', parkId, _filterCache);
+  if (sel.length() == 0) return true;   // no filter stored = all rides enabled
+  return selectionContains(sel, rideId);
 }
 
-// Same per-park JSON shape as the ride filter ({"parkId":[rideIds]}), but the
-// semantics differ: absence means "not a favorite", never "all favorites".
-void ConfigManager::rebuildFavoriteCache() const {
-  _favoriteCache.clear();
-  if (_config.rideFavoritesJson.length() == 0) {
-    _favoriteCacheValid = true;
-    return;
-  }
-  DynamicJsonDocument doc(NVS_JSON_MAX * 3);
-  DeserializationError err = deserializeJson(doc, _config.rideFavoritesJson);
-  if (err) {
-    Serial.printf("ConfigManager: failed to parse rideFavoritesJson: %s\n", err.c_str());
-    _favoriteCacheValid = true;
-    return;
-  }
-  JsonObject favorites = doc.as<JsonObject>();
-  for (JsonPair kv : favorites) {
-    int parkId = atoi(kv.key().c_str());
-    JsonArray favIds = kv.value().as<JsonArray>();
-    std::vector<int> ids;
-    for (JsonVariant v : favIds) ids.push_back((int)v);
-    _favoriteCache[parkId] = ids;
-  }
-  _favoriteCacheValid = true;
-}
-
-bool ConfigManager::isRideFavorite(int parkId, int rideId) const {
-  if (!_favoriteCacheValid) rebuildFavoriteCache();
-  auto it = _favoriteCache.find(parkId);
-  if (it == _favoriteCache.end()) return false;
-  const std::vector<int>& favIds = it->second;
-  for (size_t i = 0; i < favIds.size(); i++) {
-    if (favIds[i] == rideId) return true;
-  }
-  return false;
+// Same storage shape as the ride filter, but the semantics differ:
+// absence means "not a favorite", never "all favorites".
+bool ConfigManager::isRideFavorite(const String& parkId, const String& rideId) const {
+  const String& sel = cachedSelection('v', parkId, _favoriteCache);
+  if (sel.length() == 0) return false;
+  return selectionContains(sel, rideId);
 }

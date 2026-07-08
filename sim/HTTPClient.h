@@ -7,6 +7,7 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <string>
+#include <sstream>
 
 static inline std::wstring _httpToWide(const std::string& s) {
     if (s.empty()) return {};
@@ -21,6 +22,7 @@ class HTTPClient {
     HINTERNET _hConnect = nullptr;
     HINTERNET _hRequest = nullptr;
     std::string _body;
+    std::istringstream _stream;
     int _statusCode = -1;
     int _timeout    = 10000;
 
@@ -78,6 +80,8 @@ public:
         return true;
     }
 
+    void useHTTP10(bool) {}   // WinHTTP handles framing itself; body is pre-buffered
+
     void setTimeout(int ms) {
         _timeout = ms;
         if (_hRequest) WinHttpSetTimeouts(_hRequest, ms, ms, ms, ms);
@@ -123,6 +127,13 @@ public:
 
     int    getSize() const { return (int)_body.size(); }
     String getString()    { return String(_body.c_str()); }
+    // Streamed body for the Content-Length path in httpGetJson —
+    // ArduinoJson reads std::istream directly on desktop builds.
+    std::istream& getStream() {
+        _stream.str(_body);
+        _stream.clear();
+        return _stream;
+    }
 
     void end() {
         if (_hRequest) { WinHttpCloseHandle(_hRequest); _hRequest = nullptr; }

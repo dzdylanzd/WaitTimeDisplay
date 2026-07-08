@@ -3,15 +3,9 @@
 #include "httpjson.h"
 #include <WiFi.h>
 
-QueueApi::QueueApi() {
-  for (int i = 0; i < TZ_CACHE_SIZE; i++) {
-    _tzCache[i].parkId = -1;
-  }
-  _parksFilter[0]["name"] = true;
-  JsonObject fPark = _parksFilter[0]["parks"][0].to<JsonObject>();
-  fPark["id"] = true; fPark["name"] = true;
-  fPark["timezone"] = true; fPark["country"] = true;
-}
+static const char* TPW_BASE = "https://api.themeparks.wiki/v1";
+// Identify ourselves to the API (community-run; polite and helps debugging).
+static const char* TPW_UA   = "QueueWatch";
 
 // Map a Unicode code point to its closest ASCII form, or "" to drop it.
 // The LCD's Montserrat font only contains ASCII glyphs, so anything else
@@ -67,132 +61,234 @@ static String sanitizeToAscii(const char* src) {
   return out;
 }
 
-// Fetch parks.json filtered to the fields either caller below needs (id,
-// name, timezone, country, group name), so both share one fetch+filter
-// definition instead of two near-identical copies.
-bool QueueApi::fetchParksDoc(DynamicJsonDocument& doc) {
-  return httpGetJson("https://queue-times.com/parks.json", doc, &_parksFilter);
+String QueueApi::normalizeId(const char* uuid) {
+  String out;
+  if (!uuid) return out;
+  for (const char* p = uuid; *p; p++) {
+    char c = *p;
+    if (c == '-') continue;
+    if (c >= 'A' && c <= 'Z') c += 'a' - 'A';
+    out += c;
+  }
+  return out;
 }
 
-// Find a park's metadata (timezone + country) in parks.json, caching the
+static RideStatus parseStatus(const char* s) {
+  if (!s) return RideStatus::Closed;
+  if (strcmp(s, "OPERATING")     == 0) return RideStatus::Operating;
+  if (strcmp(s, "DOWN")          == 0) return RideStatus::Down;
+  if (strcmp(s, "REFURBISHMENT") == 0) return RideStatus::Refurbishment;
+  return RideStatus::Closed;              // CLOSED and anything unknown
+}
+
+// Extract minutes-of-day from an ISO8601 timestamp like
+// "2026-07-07T15:00:00-04:00" — the offset is the park's own, so the HH:MM
+// substring IS park-local wall-clock time. Returns -1 when malformed or the
+// date prefix doesn't match wantedDate.
+static int localMinutesIfDate(const char* iso, const String& wantedDate) {
+  if (!iso || wantedDate.length() != 10) return -1;
+  if (strncmp(iso, wantedDate.c_str(), 10) != 0) return -1;
+  if (strlen(iso) < 16 || iso[10] != 'T' || iso[13] != ':') return -1;
+  int h = (iso[11] - '0') * 10 + (iso[12] - '0');
+  int m = (iso[14] - '0') * 10 + (iso[15] - '0');
+  if (h < 0 || h > 23 || m < 0 || m > 59) return -1;
+  return h * 60 + m;
+}
+
+// Find a park's timezone via the tiny /v1/entity/{id} endpoint, caching the
 // result. Returns nullptr when the park is unknown or the fetch failed.
-const QueueApi::TZCache* QueueApi::lookupPark(int parkId) {
+const QueueApi::TZCache* QueueApi::lookupPark(const String& parkId) {
   for (int i = 0; i < _tzCacheCount; i++) {
     if (_tzCache[i].parkId == parkId) return &_tzCache[i];
   }
 
-  DynamicJsonDocument doc(32768);
-  if (!fetchParksDoc(doc)) return nullptr;
+  StaticJsonDocument<128> filter;
+  filter["timezone"] = true;
+  DynamicJsonDocument doc(512);
+  String url = String(TPW_BASE) + "/entity/" + parkId;
+  if (!httpGetJson(url, doc, &filter, TPW_UA)) return nullptr;
+  const char* tz = doc["timezone"] | "";
+  if (strlen(tz) == 0) return nullptr;
 
-  JsonArray groups = doc.as<JsonArray>();
-  for (JsonObject group : groups) {
-    JsonArray parks = group["parks"].as<JsonArray>();
-    for (JsonObject park : parks) {
-      int id = park["id"] | -1;
-      if (id == parkId) {
-        // Even when the cache is full the entry must be returned, so the
-        // last slot is overwritten rather than dropping the result.
-        int slot = (_tzCacheCount < TZ_CACHE_SIZE) ? _tzCacheCount
-                                                   : TZ_CACHE_SIZE - 1;
-        _tzCache[slot].parkId  = parkId;
-        _tzCache[slot].tz      = String(park["timezone"] | "UTC");
-        _tzCache[slot].country = sanitizeToAscii(park["country"] | "");
-        if (_tzCacheCount < TZ_CACHE_SIZE) _tzCacheCount++;
-        return &_tzCache[slot];
-      }
-    }
-  }
-
-  return nullptr;
+  // Even when the cache is full the entry must be returned, so the
+  // last slot is overwritten rather than dropping the result.
+  int slot = (_tzCacheCount < TZ_CACHE_SIZE) ? _tzCacheCount
+                                             : TZ_CACHE_SIZE - 1;
+  _tzCache[slot].parkId = parkId;
+  _tzCache[slot].tz     = String(tz);
+  if (_tzCacheCount < TZ_CACHE_SIZE) _tzCacheCount++;
+  return &_tzCache[slot];
 }
 
-String QueueApi::getParkTimezone(int parkId) {
+String QueueApi::getParkTimezone(const String& parkId) {
   const TZCache* e = lookupPark(parkId);
   return e ? e->tz : "UTC";
 }
 
-String QueueApi::getParkCountry(int parkId) {
-  const TZCache* e = lookupPark(parkId);
-  return e ? e->country : "";
-}
+bool QueueApi::getParkHours(const String& parkId, const String& todayDate,
+                            ParkHours& out) {
+  if (parkId.length() < 8 || todayDate.length() != 10) return false;
 
-void QueueApi::appendRide(JsonObject ride, const char* landName,
-                          RideInfo rides[], int& rideCount) {
-  rides[rideCount].id       = ride["id"] | -1;
-  rides[rideCount].name     = sanitizeToAscii(ride["name"] | "Unknown");
-  rides[rideCount].land     = sanitizeToAscii(landName);
-  rides[rideCount].waitTime = ride["wait_time"] | -1;
-  rides[rideCount].isOpen   = ride["is_open"] | false;
-  rides[rideCount].trend      = 0;
-  rides[rideCount].trendDelta = 0;
-  rides[rideCount].favorite   = false;
-  rideCount++;
-}
-
-bool QueueApi::fetchRideData(int parkId,
-                              RideInfo rides[], int& rideCount,
-                              int maxRides) {
-  if (WiFi.status() != WL_CONNECTED) return false;
-  if (parkId <= 0) return false;
-
-  // Only parse the fields we actually use. Without a filter, large parks
-  // (e.g. Canada's Wonderland) overflow the document and fail with NoMemory.
-  StaticJsonDocument<512> filter;
-  filter["lands"][0]["name"] = true;   // land name shown on the ride screen
-  JsonObject fLand = filter["lands"][0]["rides"][0].to<JsonObject>();
-  fLand["id"] = true; fLand["name"] = true;
-  fLand["wait_time"] = true; fLand["is_open"] = true;
-  JsonObject fTop = filter["rides"][0].to<JsonObject>();
-  fTop["id"] = true; fTop["name"] = true;
-  fTop["wait_time"] = true; fTop["is_open"] = true;
-
-  DynamicJsonDocument doc(32768);
-  String url = String("https://queue-times.com/parks/") +
-               parkId + "/queue_times.json";
-  if (!httpGetJson(url, doc, &filter)) return false;
-
-  rideCount = 0;
-  JsonArray lands = doc["lands"].as<JsonArray>();
-
-  for (JsonObject land : lands) {
-    const char* landName = land["name"] | "";
-    JsonArray ridesArray = land["rides"].as<JsonArray>();
-    for (JsonObject ride : ridesArray) {
-      if (rideCount >= maxRides) break;
-      appendRide(ride, landName, rides, rideCount);
+  int slot = -1;
+  for (int i = 0; i < _hoursCacheCount; i++) {
+    if (_hoursCache[i].parkId == parkId) {
+      if (_hoursCache[i].hours.date == todayDate) {  // fresh — cache hit
+        out = _hoursCache[i].hours;
+        return true;
+      }
+      slot = i;  // stale (yesterday) — refetch into the same slot
+      break;
     }
   }
 
-  // Some parks (e.g. Tokyo Disneyland/DisneySea) return no lands and put
-  // all rides in a top-level "rides" array instead.
-  JsonArray topRides = doc["rides"].as<JsonArray>();
-  for (JsonObject ride : topRides) {
-    if (rideCount >= maxRides) break;
-    appendRide(ride, "", rides, rideCount);
+  // The filter drops each day's "purchases" blob (Lightning Lane pricing
+  // etc.) — it dominates the ~50 KB raw schedule payload.
+  StaticJsonDocument<256> filter;
+  JsonObject f = filter["schedule"][0].to<JsonObject>();
+  f["date"]        = true;
+  f["type"]        = true;
+  f["openingTime"] = true;
+  f["closingTime"] = true;
+
+  DynamicJsonDocument doc(16384);
+  String url = String(TPW_BASE) + "/entity/" + parkId + "/schedule";
+  if (!httpGetJson(url, doc, &filter, TPW_UA)) {
+    Serial.printf("[api] schedule %s: FAILED (heap %u)\n",
+                  parkId.c_str(), (unsigned)ESP.getFreeHeap());
+    return false;
   }
 
-  return rideCount > 0;
+  ParkHours h;
+  h.date = todayDate;
+  for (JsonObject day : doc["schedule"].as<JsonArray>()) {
+    if (strcmp(day["type"] | "", "OPERATING") != 0) continue;
+    if (todayDate != (day["date"] | "")) continue;
+
+    int open = localMinutesIfDate(day["openingTime"] | "", todayDate);
+    if (open < 0) continue;
+    // A park closing past midnight has a next-day closingTime — clamp the
+    // window to end-of-day so the same-day check in parkClosedNow() holds.
+    const char* closeIso = day["closingTime"] | "";
+    int close = localMinutesIfDate(closeIso, todayDate);
+    if (close < 0) close = (strncmp(closeIso, todayDate.c_str(), 10) > 0) ? 1440 : -1;
+    if (close < 0) continue;
+
+    // Multiple OPERATING entries: earliest open, latest close.
+    if (h.openMin < 0 || open < h.openMin)   h.openMin  = open;
+    if (h.closeMin < 0 || close > h.closeMin) h.closeMin = close;
+  }
+
+  if (slot < 0) {
+    // Even when the cache is full the result must be cached somewhere, so
+    // the last slot is overwritten rather than dropping it (matches TZCache).
+    slot = (_hoursCacheCount < HOURS_CACHE_SIZE) ? _hoursCacheCount
+                                                 : HOURS_CACHE_SIZE - 1;
+    if (_hoursCacheCount < HOURS_CACHE_SIZE) _hoursCacheCount++;
+  }
+  _hoursCache[slot].parkId = parkId;
+  _hoursCache[slot].hours  = h;
+  out = h;
+  Serial.printf("[api] schedule %s: %s open %d close %d\n", parkId.c_str(),
+                todayDate.c_str(), h.openMin, h.closeMin);
+  return true;
 }
 
-bool QueueApi::fetchAvailableParks(std::vector<int>& outIds,
-                                    std::vector<String>& outNames,
-                                    std::vector<String>& outGroups) {
+bool QueueApi::fetchRideData(const String& parkId,
+                             const String& todayDate, int nowMin,
+                             RideInfo rides[], int& rideCount, int maxRides,
+                             RideStatus* outParkStatus) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  if (parkId.length() < 8) return false;   // not a plausible entity id
+
+  // Per-element filter — only the fields we actually use. Without it, a big
+  // entity (paid queues, forecasts) overflows the element document.
+  StaticJsonDocument<512> filter;
+  filter["id"]         = true;
+  filter["name"]       = true;
+  filter["entityType"] = true;
+  filter["status"]     = true;
+  filter["queue"]["STANDBY"]["waitTime"] = true;
+  filter["showtimes"][0]["startTime"]    = true;
+
+  // The liveData array is streamed one entity at a time, so memory is
+  // bounded by the largest single entity (a show with dozens of showtimes),
+  // not the park's size — show-heavy parks like Europa-Park need ~50 KB+
+  // for the whole filtered array, which the ESP32 can't afford next to a
+  // TLS session.
+  DynamicJsonDocument elem(16384);
+  String url = String(TPW_BASE) + "/entity/" + parkId + "/live";
+
+  bool ok = httpGetJsonArray(url, "liveData", elem, &filter,
+    // A retried attempt restarts the array — drop anything already parsed.
+    [&]() { rideCount = 0; },
+    [&](JsonObject e) {
+      const char* type = e["entityType"] | "";
+      if (strcmp(type, "PARK") == 0) {
+        if (outParkStatus) *outParkStatus = parseStatus(e["status"] | "");
+        return true;
+      }
+      bool isShow = (strcmp(type, "SHOW") == 0);
+      if (!isShow && strcmp(type, "ATTRACTION") != 0) return true;  // RESTAURANT etc.
+      if (rideCount >= maxRides) return false;  // stop streaming, keep result
+
+      RideInfo& r = rides[rideCount];
+      r.id     = normalizeId(e["id"] | "");
+      if (r.id.length() == 0) return true;
+      r.name   = sanitizeToAscii(e["name"] | "Unknown");
+      r.kind   = isShow ? EntityKind::Show : EntityKind::Attraction;
+      r.status = parseStatus(e["status"] | "");
+      r.waitTime = -1;
+      if (!isShow) {
+        JsonVariant wt = e["queue"]["STANDBY"]["waitTime"];
+        if (!wt.isNull()) r.waitTime = wt.as<int>();
+      }
+      // Shows: next remaining showtime today (park-local minutes-of-day).
+      r.nextShowMin = -1;
+      if (isShow) {
+        for (JsonObject st : e["showtimes"].as<JsonArray>()) {
+          int min = localMinutesIfDate(st["startTime"] | "", todayDate);
+          if (min >= nowMin && (r.nextShowMin < 0 || min < r.nextShowMin))
+            r.nextShowMin = (int16_t)min;
+        }
+      }
+      r.trend      = 0;
+      r.trendDelta = 0;
+      r.favorite   = false;
+      rideCount++;
+      return true;
+    },
+    TPW_UA);
+
+  Serial.printf("[api] live %s: %s, %d entities (heap %u)\n",
+                parkId.c_str(), ok ? "ok" : "FAILED", rideCount,
+                (unsigned)ESP.getFreeHeap());
+  return ok && rideCount > 0;
+}
+
+bool QueueApi::fetchAvailableParks(std::vector<String>& outIds,
+                                   std::vector<String>& outNames,
+                                   std::vector<String>& outGroups) {
   outIds.clear();
   outNames.clear();
   outGroups.clear();
 
-  DynamicJsonDocument doc(32768);
-  if (!fetchParksDoc(doc)) return false;
+  StaticJsonDocument<256> filter;
+  JsonObject fDest = filter["destinations"][0].to<JsonObject>();
+  fDest["name"] = true;
+  JsonObject fPark = fDest["parks"][0].to<JsonObject>();
+  fPark["id"] = true; fPark["name"] = true;
 
-  JsonArray groups = doc.as<JsonArray>();
-  for (JsonObject group : groups) {
-    const char* groupName = group["name"] | "Other";
-    JsonArray parks = group["parks"].as<JsonArray>();
-    for (JsonObject park : parks) {
-      int id = park["id"] | -1;
+  DynamicJsonDocument doc(32768);
+  String url = String(TPW_BASE) + "/destinations";
+  if (!httpGetJson(url, doc, &filter, TPW_UA)) return false;
+
+  for (JsonObject dest : doc["destinations"].as<JsonArray>()) {
+    const char* groupName = dest["name"] | "Other";
+    for (JsonObject park : dest["parks"].as<JsonArray>()) {
+      const char* id   = park["id"]   | "";
       const char* name = park["name"] | "";
-      if (id > 0 && strlen(name) > 0) {
-        outIds.push_back(id);
+      if (strlen(id) > 0 && strlen(name) > 0) {
+        outIds.push_back(String(id));                // dashed — used in URLs
         outNames.push_back(sanitizeToAscii(name));   // shown on LCD → ASCII only
         outGroups.push_back(String(groupName));      // browser only → keep UTF-8
       }

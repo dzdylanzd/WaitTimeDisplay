@@ -36,9 +36,9 @@ public:
     }
     void end() { _save(); }
 
-    // String
-    bool putString(const char* key, const String& val) {
-        _data[key] = val.c_str(); return true;
+    // String — returns bytes written like the real Preferences (0 = failure)
+    size_t putString(const char* key, const String& val) {
+        _data[key] = val.c_str(); return val.length();
     }
     String getString(const char* key, const String& def = "") const {
         auto it = _data.find(key);

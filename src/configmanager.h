@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Preferences.h>
+#include <ArduinoJson.h>
 #include <vector>
 #include <map>
 #include "waitdefaults.h"
@@ -25,12 +26,22 @@
 // PALETTES[] entry — see CUSTOM_PALETTE_INDEX in display.cpp.
 #define COLOR_PALETTE_COUNT  22
 
-// Max length of a serialized per-park JSON string (ride filters / favorites)
-// that's allowed into NVS — cfgserver.cpp rejects saves that would exceed
-// this. The JSON parse buffer that reads it back (configmanager.cpp) must be
-// generously larger than this, since ArduinoJson's per-token overhead can
-// exceed the raw string length for arrays of many short numeric ids.
-#define NVS_JSON_MAX  1900
+// Max length of ONE park's stored ride-selection string (see configmanager
+// .cpp: each park gets its own NVS key holding concatenated 8-hex-char ride
+// id hashes). NVS strings cap at ~4000 bytes; 3800 leaves margin — that's
+// 475 hashed ride ids per park, i.e. unreachable in practice (MAX_RIDES is
+// 80). The real bound is total NVS space (20 KB partition ≈ 500 entries):
+// a fully-filtered 60-ride park costs ~16 entries, so ~12 such parks fit
+// alongside the rest of the config. Saves that don't fit are rejected with
+// an error, never truncated.
+#define NVS_JSON_MAX  3800
+
+// Bumped when stored park/ride config becomes incompatible with the current
+// firmware. v2 = themeparks.wiki UUID ids (old numeric queue-times ids are
+// meaningless and get wiped on first load — WiFi/display settings survive).
+// v3 = per-park hashed ride filters/favorites (v2's single ride_flt/ride_fav
+// JSON blobs are wiped; enabled parks survive, filters are re-picked once).
+#define CONFIG_VERSION 3
 
 struct RuntimeConfig {
   unsigned long apiRefreshInterval    = DEFAULT_API_REFRESH_INTERVAL;
@@ -38,9 +49,8 @@ struct RuntimeConfig {
   unsigned long closedParkDisplayTime = DEFAULT_CLOSED_PARK_DISPLAY_TIME;
   unsigned long timeUpdateInterval    = DEFAULT_TIME_UPDATE_INTERVAL;
 
-  std::vector<int>    enabledParkIds;
+  std::vector<String> enabledParkIds;   // dashed themeparks.wiki UUIDs
   std::vector<String> enabledParkNames;
-  String              rideFiltersJson;
 
   // ---- Display: backlight + quiet hours + status LED ----
   uint8_t  brightness        = 100;     // 5–100 %
@@ -77,7 +87,6 @@ struct RuntimeConfig {
   bool    favoritesFirst  = true;
   bool    skipClosedRides = false;
   uint8_t minWaitMinutes  = 0;          // hide open rides waiting < N min
-  String  rideFavoritesJson;            // {"<parkId>":[rideId,...]}
 };
 
 class ConfigManager {
@@ -92,7 +101,23 @@ public:
                    unsigned long timeUpdate);
 
   void saveEnabledParks(const String& parksJson);
-  void saveRideFilters(const String& filtersJson);
+
+  // Merge-apply the web UI's ride selections. `filters`/`favorites` map
+  // dashed park UUIDs to arrays of ride ids (32-char undashed, or 8-hex
+  // hashes when re-importing an exported config); a null value clears that
+  // park's entry, an absent park keeps whatever is stored. Entries for
+  // parks not in keepParkIds are removed. Each park is stored under its own
+  // NVS key as concatenated 8-hex fnv1a32 hashes — no shared size budget,
+  // so every configured park can carry a full filter. Returns false (and
+  // sets outError) when a park's string exceeds NVS_JSON_MAX or NVS is out
+  // of space; already-written parks stay written (per-park atomicity).
+  bool applyRideSelections(JsonObjectConst filters, JsonObjectConst favorites,
+                           const std::vector<String>& keepParkIds,
+                           String& outError);
+
+  // Fill two JSON objects ({"<parkUuid>":["hex8",...]}) with the stored
+  // selections — used by GET /api/config for the export file.
+  void exportRideSelections(JsonObject outFilters, JsonObject outFavorites) const;
 
   void saveDisplaySettings(uint8_t brightness, bool quietEnabled,
                            uint16_t quietStartMin, uint16_t quietEndMin,
@@ -104,7 +129,6 @@ public:
                       const uint32_t colors[5]);
   void saveRideOptions(uint8_t sortMode, bool favoritesFirst,
                        bool skipClosedRides, uint8_t minWaitMinutes);
-  void saveRideFavorites(const String& favoritesJson);
 
   // Wipe the entire NVS namespace (parks, filters, timings AND the WiFi
   // credentials WiFiManager keeps there) and reset to compile-time defaults.
@@ -114,24 +138,30 @@ public:
   bool hasEnabledParks() const { return _config.enabledParkIds.size() > 0; }
 
   bool parseEnabledParks(const String& json,
-                         std::vector<int>& outIds,
+                         std::vector<String>& outIds,
                          std::vector<String>& outNames);
 
-  bool isRideEnabled(int parkId, int rideId) const;
-  bool isRideFavorite(int parkId, int rideId) const;
+  bool isRideEnabled(const String& parkId, const String& rideId) const;
+  bool isRideFavorite(const String& parkId, const String& rideId) const;
 
 private:
-  Preferences   _prefs;
+  mutable Preferences _prefs;   // lazy selection reads happen in const getters
   RuntimeConfig _config;
 
-  mutable std::map<int, std::vector<int>> _rideFilterCache;
-  mutable bool _rideFilterCacheValid = false;
+  // Per-park selection strings (concatenated 8-hex ride-id hashes), lazily
+  // loaded from their NVS keys. An entry with an empty string means "no key
+  // stored" (filter: all rides enabled / favorites: none).
+  mutable std::map<String, String> _filterCache;
+  mutable std::map<String, String> _favoriteCache;
 
-  mutable std::map<int, std::vector<int>> _favoriteCache;
-  mutable bool _favoriteCacheValid = false;
+  // Dashed UUIDs of parks that own per-park NVS keys (NVS can't enumerate
+  // keys through Preferences, so this index makes cleanup possible).
+  std::vector<String> _selectionIndex;
 
-  void rebuildRideFilterCache() const;
-  void rebuildFavoriteCache() const;
+  const String& cachedSelection(char kind, const String& parkId,
+                                std::map<String, String>& cache) const;
+  void loadSelectionIndex();
+  void storeSelectionIndex();
 };
 
 #endif // CONFIGMANAGER_H

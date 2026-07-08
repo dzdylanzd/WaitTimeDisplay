@@ -40,58 +40,6 @@ TEST_CASE("jsonEscape: escapes control characters") {
     CHECK(jsonEscape("a\tb") == "a\\tb");
 }
 
-TEST_CASE("mergePerParkJson: adds a new park's entry") {
-    DynamicJsonDocument doc(256);
-    JsonObject incoming = doc.to<JsonObject>();
-    JsonArray ids = incoming.createNestedArray("5");
-    ids.add(101); ids.add(102);
-
-    String out;
-    bool ok = mergePerParkJson("", incoming, {5}, out);
-    CHECK(ok);
-    CHECK(out.indexOf("\"5\"") >= 0);
-    CHECK(out.indexOf("101") >= 0);
-}
-
-TEST_CASE("mergePerParkJson: null entry clears an existing park") {
-    DynamicJsonDocument doc(256);
-    JsonObject incoming = doc.to<JsonObject>();
-    incoming["5"] = nullptr;
-
-    String out;
-    bool ok = mergePerParkJson("{\"5\":[101,102],\"6\":[201]}", incoming, {5, 6}, out);
-    CHECK(ok);
-    CHECK(out.indexOf("\"5\"") < 0);
-    CHECK(out.indexOf("\"6\"") >= 0);
-}
-
-TEST_CASE("mergePerParkJson: drops parks no longer enabled") {
-    String out;
-    bool ok = mergePerParkJson("{\"5\":[101],\"6\":[201]}", JsonObject(), {6}, out);
-    CHECK(ok);
-    CHECK(out.indexOf("\"5\"") < 0);
-    CHECK(out.indexOf("\"6\"") >= 0);
-}
-
-TEST_CASE("mergePerParkJson: rejects a result over the NVS budget") {
-    // Build a merged object whose serialized form exceeds NVS_JSON_MAX by
-    // stuffing one park with many ride ids. The source doc must be sized
-    // generously enough that ArduinoJson doesn't silently truncate the
-    // array before mergePerParkJson even sees it.
-    DynamicJsonDocument doc(32768);
-    JsonObject incoming = doc.to<JsonObject>();
-    JsonArray ids = incoming.createNestedArray("5");
-    for (int i = 0; i < 400; i++) ids.add(100000 + i);
-    REQUIRE(ids.size() == 400);   // sanity: the source array wasn't truncated
-
-    String out;
-    bool ok = mergePerParkJson("", incoming, {5}, out);
-    CHECK_FALSE(ok);
-}
-
-TEST_CASE("mergePerParkJson: empty result is a valid (empty) string") {
-    String out;
-    bool ok = mergePerParkJson("", JsonObject(), {}, out);
-    CHECK(ok);
-    CHECK(out == "");
-}
+// (mergePerParkJson was replaced by ConfigManager::applyRideSelections —
+//  its per-park merge/cleanup/limit behaviour is covered in
+//  test_configmanager.cpp.)

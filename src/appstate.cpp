@@ -4,6 +4,7 @@
 #include "quiethours.h"
 #include "ridefilter.h"
 #include "ridereindex.h"
+#include "idhash.h"
 #include "waitlevel.h"
 #include "lcd_st7789.h"
 
@@ -44,6 +45,17 @@ static constexpr unsigned long FETCH_FAIL_REBOOT_MS = 15UL * 60UL * 1000UL;
 // A fresh TLS handshake needs roughly 45 KB of free heap; below this every
 // future fetch is guaranteed to fail, so restart while we still can.
 static constexpr uint32_t MIN_FREE_HEAP_BYTES = 40000;
+// While the schedule says the park is closed, /live polling is suppressed —
+// but a wrong or changed schedule must self-correct, so still re-check
+// (schedule + live) this often instead of at the API refresh interval.
+static constexpr unsigned long CLOSED_PARK_SANITY_POLL_MS = 60UL * 60UL * 1000UL;
+
+// "HH:MM" for a minutes-of-day value (park hours in the header / sub-label).
+static String formatHHMM(int minutes) {
+  char buf[6];
+  snprintf(buf, sizeof(buf), "%02d:%02d", minutes / 60, minutes % 60);
+  return String(buf);
+}
 
 AppStateManager* AppStateManager::_instance = nullptr;
 
@@ -237,7 +249,24 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
     ESP.restart();
   }
 
-  if (_rideCount <= 0) {
+  // Schedule check: outside today's operating window the park is closed no
+  // matter what /live says (or whether it could even be fetched). Hours are
+  // per-park, date-stamped, and refreshed by loadParkData().
+  int  nowMin = 0;
+  bool scheduleClosed = getLocalMinutesOfDay(nowMin) &&
+                        parkClosedNow(_parkHours, nowMin);
+
+  // The park just (re)opened while its closed screen was up — the schedule
+  // suppression above kept the data stale all night, so reload immediately
+  // instead of waiting out a poll interval.
+  if (_closedBySchedule && !scheduleClosed) {
+    _closedBySchedule = false;
+    _lastApiFetch = now;
+    loadParkData();
+    return;
+  }
+
+  if (_rideCount <= 0 && !scheduleClosed) {
     if (now - _lastApiFetch >= DATA_RETRY_INTERVAL) {
       _lastApiFetch = now;
       // A park that keeps failing (fetch error or zero usable rides) must not
@@ -252,26 +281,33 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
     return;
   }
 
-  if (allRidesClosed()) {
+  if (scheduleClosed || allRidesClosed()) {
+    _closedBySchedule = scheduleClosed;
     if (!_showingClosedPark) {
-      _display.showClosedPark(_currentParkName);
+      showClosedParkScreen(nowMin);
       _showingClosedPark = true;
       _closedParkStart = now;
       updateLed();
     } else if (now - _closedParkStart >= _cfgClosedParkDisplayTime) {
       if (cfg.enabledParkIds.size() > 1) {
         advanceToNextPark();
-      } else if (now - _lastApiFetch >= _cfgApiRefreshInterval) {
-        // Single park, everything closed: there is nothing to rotate to, so
-        // re-check at the normal API cadence instead of re-fetching every
-        // closed-park interval (~20 s) all night — thousands of needless TLS
-        // sessions per night fragment the heap and hammer queue-times.com.
-        _lastApiFetch = now;
-        loadParkData();
+      } else {
+        // Single park, closed: nothing to rotate to, so only re-check at a
+        // slow cadence instead of every closed-park interval (~20 s) — all-
+        // night TLS churn fragments the heap and hammers the API. With known
+        // hours an hourly sanity poll (schedule could be wrong or change) is
+        // enough — reopening is caught by the schedule check above, not by
+        // polling; without hours fall back to the API refresh interval.
+        unsigned long recheck = scheduleClosed ? CLOSED_PARK_SANITY_POLL_MS
+                                               : _cfgApiRefreshInterval;
+        if (now - _lastApiFetch >= recheck) {
+          _lastApiFetch = now;
+          loadParkData();
+        }
       }
     }
     if (now - _lastTimeUpdate >= _cfgTimeUpdateInterval) {
-      _display.showClosedPark(_currentParkName);
+      showClosedParkScreen(nowMin);
       _lastTimeUpdate = now;
     }
     return;
@@ -301,14 +337,16 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
 // nothing, just the wait panel (values moved), or the whole screen
 // (rides added / removed / renamed / reordered).
 void AppStateManager::refreshRideData() {
-  int  prevCount = _rideCount;
-  int  prevId[MAX_RIDES];
-  int  prevWait[MAX_RIDES];
-  bool prevOpen[MAX_RIDES];
+  int        prevCount = _rideCount;
+  String     prevId[MAX_RIDES];
+  int        prevWait[MAX_RIDES];
+  RideStatus prevStatus[MAX_RIDES];
+  int16_t    prevShow[MAX_RIDES];
   for (int i = 0; i < prevCount; i++) {
-    prevId[i]   = _rides[i].id;
-    prevWait[i] = _rides[i].waitTime;
-    prevOpen[i] = _rides[i].isOpen;
+    prevId[i]     = _rides[i].id;
+    prevWait[i]   = _rides[i].waitTime;
+    prevStatus[i] = _rides[i].status;
+    prevShow[i]   = _rides[i].nextShowMin;
   }
   if (!fetchAndProcessRideData()) return;
 
@@ -325,8 +363,8 @@ void AppStateManager::refreshRideData() {
   for (int i = 0; !structureChanged && i < _rideCount; i++) {
     if (_rides[i].id != prevId[i] || _rides[i].name != _lastRideNames[i])
       structureChanged = true;
-    else if (_rides[i].waitTime != prevWait[i] || _rides[i].isOpen != prevOpen[i] ||
-             _rides[i].trend != 0)
+    else if (_rides[i].waitTime != prevWait[i] || _rides[i].status != prevStatus[i] ||
+             _rides[i].nextShowMin != prevShow[i] || _rides[i].trend != 0)
       waitsChanged = true;
   }
 
@@ -491,10 +529,33 @@ void AppStateManager::transitionTo(SystemState newState) {
 // Helpers
 // ==================================================================
 
+// "Closed" here means nothing worth showing: no attraction operating or
+// down (a breakdown implies the park itself is open), and no show with a
+// remaining showtime today.
 bool AppStateManager::allRidesClosed() const {
   if (_rideCount <= 0) return true;
-  for (int i = 0; i < _rideCount; i++) if (_rides[i].isOpen) return false;
+  for (int i = 0; i < _rideCount; i++) {
+    const RideInfo& r = _rides[i];
+    if (r.kind == EntityKind::Show) {
+      if (r.nextShowMin >= 0) return false;
+    } else if (r.isOpen() || r.status == RideStatus::Down) {
+      return false;
+    }
+  }
   return true;
+}
+
+// Closed-park screen with the most helpful sub-text the schedule allows:
+// "OPENS 09:00" before today's opening, "CLOSED TODAY" on a no-hours day,
+// otherwise the generic "PARK IS CLOSED TODAY" (after close / no schedule).
+void AppStateManager::showClosedParkScreen(int nowMin) {
+  String sub;
+  if (_parkHours.closedAllDay()) {
+    sub = "CLOSED TODAY";
+  } else if (_parkHours.known() && nowMin < _parkHours.openMin) {
+    sub = "OPENS " + formatHHMM(_parkHours.openMin);
+  }
+  _display.showClosedPark(_currentParkName, sub);
 }
 
 void AppStateManager::applyRideFilter() {
@@ -512,7 +573,9 @@ void AppStateManager::applyRideFilter() {
 void AppStateManager::annotateRides() {
   for (int i = 0; i < _rideCount; i++) {
     RideInfo& r = _rides[i];
-    int delta = _trends.updateAndGetDelta(r.id, r.isOpen ? r.waitTime : -1);
+    // TrendStore keys by int32 — hash the UUID (see idhash.h).
+    int delta = _trends.updateAndGetDelta((int32_t)fnv1a32(r.id.c_str()),
+                                          r.isOpen() ? r.waitTime : -1);
     r.trend      = (delta > 0) ? 1 : (delta < 0) ? -1 : 0;
     r.trendDelta = (int16_t)delta;
     r.favorite   = _cfg.isRideFavorite(_currentParkId, r.id);
@@ -524,11 +587,26 @@ void AppStateManager::annotateRides() {
 // freshness metadata. Shared by loadParkData() and refreshRideData() so the
 // two callers can't drift on what "process the fetched rides" means.
 bool AppStateManager::fetchAndProcessRideData() {
-  if (!_api.fetchRideData(_currentParkId, _rides, _rideCount, MAX_RIDES)) {
+  // Next-showtime selection needs the park-local date + time of day. The
+  // park's timezone is already applied (syncParkTimezone), so the device
+  // clock IS park-local. Before NTP sync: empty date + minute 0 — shows then
+  // simply carry no "next showtime", which corrects on the next refresh.
+  int nowMin = 0;
+  if (!getLocalMinutesOfDay(nowMin)) nowMin = 0;
+  // Fetch into a scratch array: the streaming parser writes elements as they
+  // arrive, so a mid-body failure would otherwise leave _rides half-updated
+  // — refreshRideData() relies on stale-but-consistent data surviving a
+  // failed refresh. Static: ~5 KB is too big for the loop task's stack.
+  static RideInfo scratch[MAX_RIDES];
+  int scratchCount = 0;
+  if (!_api.fetchRideData(_currentParkId, getLocalDateString(), nowMin,
+                          scratch, scratchCount, MAX_RIDES)) {
     if (_fetchFailStreak == 0) _fetchFailSince = millis();
     _fetchFailStreak++;
     return false;
   }
+  for (int i = 0; i < scratchCount; i++) _rides[i] = std::move(scratch[i]);
+  _rideCount = scratchCount;
   _fetchFailStreak = 0;
   _wifiCycleTried  = false;
   applyRideFilter();
@@ -556,9 +634,22 @@ bool AppStateManager::fetchAndProcessRideData() {
 // the appropriate screen from scratch.
 void AppStateManager::loadParkData() {
   syncParkTimezone();
-  // The header clock shows this park's local time; the small country label
-  // next to it says where that time is from (cached with the timezone).
-  _display.setParkCountry(_api.getParkCountry(_currentParkId));
+
+  // Today's operating hours: drive the header label above the clock and the
+  // schedule-based closed-park handling in tickWaitTimeCycle(). Cached per
+  // park per day inside QueueApi, so this is one fetch per park per day. A
+  // failed fetch resets to "unknown" — closed detection then falls back to
+  // the all-rides-closed inference.
+  _parkHours = ParkHours();
+  _closedBySchedule = false;  // re-derived from the fresh hours next tick
+  _api.getParkHours(_currentParkId, getLocalDateString(), _parkHours);
+  if (_parkHours.known()) {
+    _display.setHeaderInfo(formatHHMM(_parkHours.openMin) + "-" +
+                           formatHHMM(_parkHours.closeMin == 1440
+                                          ? 0 : _parkHours.closeMin));
+  } else {
+    _display.setHeaderInfo("");
+  }
 
   if (fetchAndProcessRideData()) {
     _showingClosedPark = false;
@@ -842,7 +933,7 @@ void AppStateManager::updateLed() {
   WaitLevel level = _showingClosedPark || allRidesClosed()
       ? WaitLevel::Closed
       : pickWaitLevel(_rides[_currentRideIndex].waitTime,
-                      _rides[_currentRideIndex].isOpen,
+                      _rides[_currentRideIndex].isOpen(),
                       cfg.waitTh1, cfg.waitTh2, cfg.waitTh3);
   _led.showLevel(level, _brightnessApplied ? _lastAppliedBrightness
                                             : _cfg.getConfig().brightness);

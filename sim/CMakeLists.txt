@@ -86,6 +86,7 @@ target_compile_definitions(queuewatch_sim PRIVATE
     WIN32_LEAN_AND_MEAN
     NOMINMAX
     ARDUINOJSON_ENABLE_ARDUINO_STRING=1
+    ARDUINOJSON_ENABLE_STD_STREAM=1  # httpGetJson streams from HTTPClient stub's std::istringstream
     SIMULATION=1               # skip WiFi-status guard in httpGetJson() so /api/parks always works
 )
 

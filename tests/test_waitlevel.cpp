@@ -37,3 +37,25 @@ TEST_CASE("pickWaitLevel: high custom thresholds keep long waits green") {
     CHECK(pickWaitLevel(120, true, 60, 90, 120) == WaitLevel::Orange);
     CHECK(pickWaitLevel(121, true, 60, 90, 120) == WaitLevel::Red);
 }
+
+// ── status overload (themeparks.wiki RideStatus) ──────────────────────────────
+
+TEST_CASE("pickWaitLevel(status): Operating uses the normal buckets") {
+    CHECK(pickWaitLevel(10, RideStatus::Operating) == WaitLevel::Green);
+    CHECK(pickWaitLevel(25, RideStatus::Operating) == WaitLevel::Amber);
+    CHECK(pickWaitLevel(40, RideStatus::Operating) == WaitLevel::Orange);
+    CHECK(pickWaitLevel(60, RideStatus::Operating) == WaitLevel::Red);
+    CHECK(pickWaitLevel(25, RideStatus::Operating, 5, 10, 20) == WaitLevel::Red);
+}
+
+TEST_CASE("pickWaitLevel(status): DOWN is always red, whatever the wait") {
+    CHECK(pickWaitLevel(0,  RideStatus::Down) == WaitLevel::Red);
+    CHECK(pickWaitLevel(-1, RideStatus::Down) == WaitLevel::Red);
+    CHECK(pickWaitLevel(5,  RideStatus::Down, 60, 90, 120) == WaitLevel::Red);
+}
+
+TEST_CASE("pickWaitLevel(status): Closed and Refurbishment map to Closed") {
+    CHECK(pickWaitLevel(0,   RideStatus::Closed)        == WaitLevel::Closed);
+    CHECK(pickWaitLevel(100, RideStatus::Closed)        == WaitLevel::Closed);
+    CHECK(pickWaitLevel(0,   RideStatus::Refurbishment) == WaitLevel::Closed);
+}

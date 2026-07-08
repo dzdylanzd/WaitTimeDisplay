@@ -1,5 +1,6 @@
 #include "cfgserver.h"
 #include "config.h"
+#include "tzhelper.h"
 #include <ArduinoJson.h>
 
 #if __has_include(<esp_task_wdt.h>)
@@ -441,7 +442,7 @@ async function factoryReset(btn){
   btn.disabled=false;btn.innerHTML='Factory Reset';}
 </script>
 <script>
-let allParks=[];let allRides=[];let currentParkId=0;let rideFilterCache={};let favCache={};
+let allParks=[];let allRides=[];let currentParkId='';let rideFilterCache={};let favCache={};
 const $=id=>document.getElementById(id);
 
 // Unsaved-changes tracking: warn before the user navigates away having toggled
@@ -563,11 +564,10 @@ window.addEventListener('DOMContentLoaded',async()=>{
     if(Array.isArray(cfg.waitColors)&&cfg.waitColors.length===5)
       cfg.waitColors.forEach((c,i)=>$('wc'+i).value=c);
     if(cfg.rideOptions){$('sortMode').value=cfg.rideOptions.sortMode||0;$('favFirst').checked=!!cfg.rideOptions.favoritesFirst;$('skipClosed').checked=!!cfg.rideOptions.skipClosed;$('minWait').value=cfg.rideOptions.minWait||0;}
-    if(cfg.rideFavorites)favCache=cfg.rideFavorites;
     if(cfg.enabledParks&&cfg.enabledParks.length){
       allParks=cfg.enabledParks.map(p=>({...p,enabled:true,group:"Configured"}));
       renderParkList();populateParkSelector(cfg.enabledParks);
-      currentParkId=cfg.currentParkId||0;
+      currentParkId=cfg.currentParkId||'';
       if(currentParkId)fetchRidesForPark(currentParkId);
     }
   }catch(e){toast('Failed to load config','error');}
@@ -595,7 +595,7 @@ function renderParkList(){const c=$('parkList');updateParkCount();
     if(q&&park.name.toLowerCase().indexOf(q)<0)continue;
     shown++;
     if(park.group!==lastGroup){lastGroup=park.group;html+='<div class="grouphdr">'+escapeHtml(park.group)+'</div>';}
-    html+='<div class="item"><label class="switch"><input type="checkbox" id="pk_'+park.id+'" '+(park.enabled?'checked':'')+' onchange="togglePark('+park.id+')"><span class="slider"></span></label><span class="name">'+escapeHtml(park.name)+'</span></div>';
+    html+='<div class="item"><label class="switch"><input type="checkbox" id="pk_'+park.id+'" '+(park.enabled?'checked':'')+' onchange="togglePark(\''+park.id+'\')"><span class="slider"></span></label><span class="name">'+escapeHtml(park.name)+'</span></div>';
   }
   if(!shown)html='<p class="empty">No parks match your search.</p>';
   c.innerHTML=html;}
@@ -607,9 +607,9 @@ function populateParkSelector(parks){const sel=$('parkSelector');const cur=curre
   let html='<option value="">-- Select a park --</option>';
   if(parks&&parks.length){for(const park of parks)html+='<option value="'+park.id+'"'+(park.id===cur?' selected':'')+'>'+escapeHtml(park.name)+'</option>';}
   sel.innerHTML=html;
-  sel.onchange=function(){saveCurrentRideFilterState();const id=parseInt(this.value);if(id)fetchRidesForPark(id);else clearRides();};}
+  sel.onchange=function(){saveCurrentRideFilterState();const id=this.value;if(id)fetchRidesForPark(id);else clearRides();};}
 
-function clearRides(){currentParkId=0;allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';$('rideSearch').value='';updateRideCount();}
+function clearRides(){currentParkId='';allRides=[];$('rideList').innerHTML='';$('rideStats').innerHTML='';$('rideTools').style.display='none';$('rideSearchWrap').style.display='none';$('rideSearch').value='';updateRideCount();}
 
 function saveCurrentRideFilterState(){if(!currentParkId)return;
   const enabledIds=allRides.filter(r=>r.enabled).map(r=>r.id);
@@ -635,6 +635,9 @@ R"rawliteral(
 // browser list matches what the device (and its LED) will show.
 function levelStyle(c){return 'style="color:'+c+';background:'+c+'22;border:1px solid '+c+'55"';}
 function waitBadge(r){
+  if(r.kind==='SHOW')return r.nextShow?'<span class="badge b-teal">Next '+r.nextShow+'</span>':'<span class="badge b-muted">done</span>';
+  if(r.status==='DOWN')return '<span class="badge" '+levelStyle($('wc3').value)+'>DOWN</span>';
+  if(r.status==='REFURBISHMENT')return '<span class="badge" '+levelStyle($('wc4').value)+'>REFURB</span>';
   if(r.isOpen===false)return '<span class="badge" '+levelStyle($('wc4').value)+'>CLOSED</span>';
   if(r.waitTime<0)return '<span class="badge b-muted">n/a</span>';
   const t=readWaitThresholds();
@@ -668,7 +671,7 @@ function renderRideList(){const c=$('rideList');
     shown++;
     const land=ride.land||'';
     if(land!==lastLand){lastLand=land;if(land)html+='<div class="grouphdr">'+escapeHtml(land)+'<button type="button" class="landsel" data-land="'+escapeHtml(land)+'" data-on="1">all</button><button type="button" class="landsel" data-land="'+escapeHtml(land)+'" data-on="0">none</button></div>';}
-    html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide('+ride.id+')"><span class="slider"></span></label><span class="name"><span class="rid">#'+ride.id+'</span> '+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav('+ride.id+',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
+    html+='<div class="item"><label class="switch"><input type="checkbox" id="ride_'+ride.id+'" '+(ride.enabled?'checked':'')+' onchange="toggleRide(\''+ride.id+'\')"><span class="slider"></span></label><span class="name">'+(ride.kind==='SHOW'?'<span class="rid">SHOW</span> ':'')+escapeHtml(ride.name)+'</span><button type="button" class="star'+(ride.favorite?' on':'')+'" title="Favorite" onclick="toggleFav(\''+ride.id+'\',this)">&#9733;</button>'+waitBadge(ride)+'</div>';
   }
   if(!shown)html='<p class="empty">No rides match your search.</p>';
   c.innerHTML=html;}
@@ -763,55 +766,6 @@ function escapeHtml(str){return String(str).replace(/&/g,'&amp;').replace(/</g,'
 </html>
 )rawliteral";
 
-// Merge an incoming per-park map ({"parkId":[rideIds]} with null meaning
-// "clear this park's entry") into the stored JSON, dropping parks that are no
-// longer enabled. Used for both ride filters and ride favorites. Returns
-// false when the merged result would blow the NVS string budget — callers
-// must then reject the save (truncating would store unparseable JSON).
-static bool mergePerParkJson(const String& existing, JsonObject incoming,
-                             const std::vector<int>& keepParkIds, String& out) {
-  // Must be generously larger than NVS_JSON_MAX: ArduinoJson's per-node pool
-  // overhead means a doc sized close to the raw JSON limit can silently
-  // truncate the merge (dropping ride ids) before the length check below
-  // ever sees an over-budget result -- a copy failure that's much worse
-  // than the "reject the save" behavior this function promises.
-  DynamicJsonDocument mergedDoc(NVS_JSON_MAX * 8);
-  JsonObject merged;
-  if (existing.length() > 0 && !deserializeJson(mergedDoc, existing)
-      && mergedDoc.is<JsonObject>()) {
-    merged = mergedDoc.as<JsonObject>();      // reuse existing (writable)
-  } else {
-    mergedDoc.clear();
-    merged = mergedDoc.to<JsonObject>();      // fresh, writable object
-  }
-
-  if (!incoming.isNull()) {
-    for (JsonPair kv : incoming) {
-      if (kv.value().isNull()) merged.remove(kv.key());   // clear this park
-      else                     merged[kv.key()] = kv.value();
-    }
-  }
-
-  // Remove entries for parks that are no longer enabled
-  std::vector<String> keysToRemove;
-  for (JsonPair kv : merged) {
-    int parkId = atoi(kv.key().c_str());
-    bool stillEnabled = false;
-    for (size_t i = 0; i < keepParkIds.size(); i++) {
-      if (keepParkIds[i] == parkId) { stillEnabled = true; break; }
-    }
-    if (!stillEnabled) keysToRemove.push_back(String(kv.key().c_str()));
-  }
-  for (size_t i = 0; i < keysToRemove.size(); i++) merged.remove(keysToRemove[i].c_str());
-
-  out = "";
-  if (merged.size() > 0) {
-    serializeJson(merged, out);
-    if (out.length() > NVS_JSON_MAX) return false;
-  }
-  return true;
-}
-
 ConfigWebServer::ConfigWebServer(ConfigManager& cfgMgr, QueueApi& api)
   : _server(80), _cfgMgr(cfgMgr), _api(api), _configUpdated(false) {}
 
@@ -861,7 +815,7 @@ void ConfigWebServer::handleRoot() {
 }
 
 void ConfigWebServer::handleApiParks() {
-  std::vector<int> ids; std::vector<String> names; std::vector<String> groups;
+  std::vector<String> ids; std::vector<String> names; std::vector<String> groups;
   if (!_api.fetchAvailableParks(ids, names, groups)) {
     _server.send(500, "application/json", "{\"error\":\"Failed to fetch parks\"}");
     return;
@@ -877,7 +831,7 @@ void ConfigWebServer::handleApiParks() {
       if (cfg.enabledParkIds[j] == ids[i]) { enabled = true; break; }
     }
     if (i > 0) json += ",";
-    json += "{\"id\":";  json += ids[i];
+    json += "{\"id\":\"";  json += ids[i]; json += "\"";
     json += ",\"name\":\""; json += jsonEscape(names[i]); json += "\"";
     json += ",\"group\":\""; json += jsonEscape(groups[i]); json += "\"";
     json += ",\"enabled\":"; json += enabled ? "true" : "false";
@@ -887,27 +841,45 @@ void ConfigWebServer::handleApiParks() {
   _server.send(200, "application/json", json);
 }
 
+static const char* statusName(RideStatus s) {
+  switch (s) {
+    case RideStatus::Operating:     return "OPERATING";
+    case RideStatus::Down:          return "DOWN";
+    case RideStatus::Refurbishment: return "REFURBISHMENT";
+    default:                        return "CLOSED";
+  }
+}
+
 void ConfigWebServer::handleApiRides() {
   if (!_server.hasArg("parkId")) {
     _server.send(400, "application/json", "{\"error\":\"Missing parkId\"}"); return;
   }
-  int parkId = _server.arg("parkId").toInt();
-  if (parkId <= 0) {
+  String parkId = _server.arg("parkId");
+  if (parkId.length() < 8) {   // not a plausible entity UUID
     _server.send(400, "application/json", "{\"error\":\"Invalid parkId\"}"); return;
   }
   RideInfo rides[MAX_RIDES]; int rideCount = 0;
-  if (!_api.fetchRideData(parkId, rides, rideCount, MAX_RIDES)) {
+  // Showtime cutoff: use the device clock as-is. It runs on the currently
+  // displayed park's timezone — close enough for the config UI's badges.
+  int nowMin = 0;
+  if (!getLocalMinutesOfDay(nowMin)) nowMin = 0;
+  if (!_api.fetchRideData(parkId, getLocalDateString(), nowMin,
+                          rides, rideCount, MAX_RIDES)) {
     _server.send(500, "application/json", "{\"error\":\"Failed to fetch rides\"}"); return;
   }
   // Build JSON as a plain string — same reason as handleApiParks().
   String json = "[";
   for (int i = 0; i < rideCount; i++) {
     if (i > 0) json += ",";
-    json += "{\"id\":";       json += rides[i].id;
+    json += "{\"id\":\"";     json += rides[i].id; json += "\"";
     json += ",\"name\":\"";   json += jsonEscape(rides[i].name); json += "\"";
-    json += ",\"land\":\"";   json += jsonEscape(rides[i].land); json += "\"";
-    json += ",\"isOpen\":";   json += rides[i].isOpen ? "true" : "false";
+    json += ",\"kind\":\"";   json += (rides[i].kind == EntityKind::Show ? "SHOW" : "RIDE"); json += "\"";
+    json += ",\"status\":\""; json += statusName(rides[i].status); json += "\"";
+    json += ",\"isOpen\":";   json += rides[i].isOpen() ? "true" : "false";
     json += ",\"waitTime\":"; json += rides[i].waitTime;
+    if (rides[i].kind == EntityKind::Show && rides[i].nextShowMin >= 0) {
+      json += ",\"nextShow\":\""; json += minutesToHHMM(rides[i].nextShowMin); json += "\"";
+    }
     json += ",\"enabled\":";  json += _cfgMgr.isRideEnabled(parkId, rides[i].id) ? "true" : "false";
     json += ",\"favorite\":"; json += _cfgMgr.isRideFavorite(parkId, rides[i].id) ? "true" : "false";
     json += "}";
@@ -932,10 +904,14 @@ void ConfigWebServer::handleApiConfig() {
     JsonObject p = ep.createNestedObject();
     p["id"] = cfg.enabledParkIds[i]; p["name"] = cfg.enabledParkNames[i];
   }
-  doc["currentParkId"] = cfg.enabledParkIds.size() > 0 ? cfg.enabledParkIds[0] : 0;
-  if (cfg.rideFiltersJson.length() > 0) {
-    DynamicJsonDocument fd(4096);
-    if (!deserializeJson(fd, cfg.rideFiltersJson)) doc["rideFilters"] = fd.as<JsonObject>();
+  doc["currentParkId"] = cfg.enabledParkIds.size() > 0 ? cfg.enabledParkIds[0] : String("");
+  // Stored ride selections (8-hex ride-id hashes) ride along in the export
+  // so a config file restores filters/favorites too; applyRideSelections
+  // accepts the hashes back on import.
+  {
+    JsonObject rf  = doc.createNestedObject("rideFilters");
+    JsonObject fav = doc.createNestedObject("rideFavorites");
+    _cfgMgr.exportRideSelections(rf, fav);
   }
 
   doc["brightness"]      = cfg.brightness;
@@ -962,11 +938,6 @@ void ConfigWebServer::handleApiConfig() {
   ro["favoritesFirst"] = cfg.favoritesFirst;
   ro["skipClosed"]     = cfg.skipClosedRides;
   ro["minWait"]        = cfg.minWaitMinutes;
-
-  if (cfg.rideFavoritesJson.length() > 0) {
-    DynamicJsonDocument fav(4096);
-    if (!deserializeJson(fav, cfg.rideFavoritesJson)) doc["rideFavorites"] = fav.as<JsonObject>();
-  }
 
   String json; serializeJson(doc, json);
   _server.send(200, "application/json", json);
@@ -1000,10 +971,10 @@ void ConfigWebServer::handleSaveConfig() {
   FEED_WDT();
 
   JsonArray parksArr = doc["enabledParks"].as<JsonArray>();
-  std::vector<int> parkIds; std::vector<String> parkNames;
+  std::vector<String> parkIds; std::vector<String> parkNames;
   for (JsonObject p : parksArr) {
-    int id = p["id"] | -1; const char* name = p["name"] | "";
-    if (id > 0) { parkIds.push_back(id); parkNames.push_back(String(name)); }
+    const char* id = p["id"] | ""; const char* name = p["name"] | "";
+    if (strlen(id) > 0) { parkIds.push_back(String(id)); parkNames.push_back(String(name)); }
   }
   DynamicJsonDocument parksDoc(4096);
   JsonArray parksOut = parksDoc.to<JsonArray>();
@@ -1015,29 +986,19 @@ void ConfigWebServer::handleSaveConfig() {
   _cfgMgr.saveEnabledParks(parksJson);
   FEED_WDT();
 
-  // Merge ride filters (and favorites — same shape). If the result exceeds
-  // the NVS budget the save is rejected outright: truncating the JSON would
-  // store an unparseable string that silently disables all filtering.
-  JsonObject rideFiltersObj = doc["rideFilters"].as<JsonObject>();
-  String filtersJson;
-  if (!mergePerParkJson(_cfgMgr.getConfig().rideFiltersJson, rideFiltersObj,
-                        parkIds, filtersJson)) {
-    _server.send(400, "application/json",
-                 "{\"success\":false,\"error\":\"Ride filters too large - use fewer per-ride selections\"}");
-    return;
+  // Ride filters + favorites: merge-applied straight into their per-park
+  // NVS keys (absent park = keep stored, null = clear). Fails only when NVS
+  // itself is out of space — reported, never truncated.
+  {
+    String selErr;
+    if (!_cfgMgr.applyRideSelections(doc["rideFilters"].as<JsonObjectConst>(),
+                                     doc["rideFavorites"].as<JsonObjectConst>(),
+                                     parkIds, selErr)) {
+      String resp = "{\"success\":false,\"error\":\"" + selErr + "\"}";
+      _server.send(400, "application/json", resp);
+      return;
+    }
   }
-  _cfgMgr.saveRideFilters(filtersJson);
-  FEED_WDT();
-
-  JsonObject rideFavsObj = doc["rideFavorites"].as<JsonObject>();
-  String favoritesJson;
-  if (!mergePerParkJson(_cfgMgr.getConfig().rideFavoritesJson, rideFavsObj,
-                        parkIds, favoritesJson)) {
-    _server.send(400, "application/json",
-                 "{\"success\":false,\"error\":\"Too many favorites - unstar some rides\"}");
-    return;
-  }
-  _cfgMgr.saveRideFavorites(favoritesJson);
   FEED_WDT();
 
   // Display settings + ride options. Missing keys keep the current values so
