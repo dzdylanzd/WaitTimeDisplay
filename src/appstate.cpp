@@ -219,12 +219,19 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
   }
 
   // Device Control tab's "Next attraction" / "Next park" buttons act just
-  // like the BOOT button's short/long press (see onButtonEvent()).
+  // like the BOOT button's short/long press (see onButtonEvent()). Must
+  // return right after: advanceRide()/advanceToNextPark() stamp _lastRotate
+  // with a fresh millis() call, which can land after this tick's `now` —
+  // falling through to the auto-rotate check below would then see
+  // `now - _lastRotate` underflow (unsigned) to a huge value and fire a
+  // second, unwanted advance in the same tick.
   if (_webServer.consumeNextRideRequest()) {
     if (_rideCount > 0 && !_showingClosedPark) advanceRide();
+    return;
   }
   if (_webServer.consumeNextParkRequest()) {
     advanceToNextPark();
+    return;
   }
 
   const RuntimeConfig& cfg = _cfg.getConfig();
