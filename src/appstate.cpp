@@ -1,5 +1,4 @@
 #include <WiFi.h>
-#include <ESPmDNS.h>
 #include "appstate.h"
 #include "tzhelper.h"
 #include "quiethours.h"
@@ -176,19 +175,7 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
   if (WiFi.status() == WL_CONNECTED) {
     _wifiTrouble = false;
     _webServer.begin();  // revive the config UI if a portal session stopped it
-    startMdns();
     transitionTo(SystemState::STARTUP_INFO);
-  }
-}
-
-// Registers "queuewatch.local" so the config page's hint actually resolves.
-// MDNS.begin() must only be called once per WiFi association — repeated
-// calls after a reconnect are a no-op guarded by _mdnsStarted.
-void AppStateManager::startMdns() {
-  if (_mdnsStarted) return;
-  if (MDNS.begin("queuewatch")) {
-    MDNS.addService("http", "tcp", 80);
-    _mdnsStarted = true;
   }
 }
 
@@ -198,10 +185,7 @@ void AppStateManager::startMdns() {
 
 void AppStateManager::tickStartupInfo(unsigned long now) {
   if (!_startupScreenShown) {
-    // mDNS is up by the time we reach here (started right after WiFi
-    // connects, before the STARTUP_INFO transition) so queuewatch.local
-    // is stable across DHCP lease changes, unlike the IP.
-    _display.showStartupInfo(_mdnsStarted ? "queuewatch.local" : WiFi.localIP().toString());
+    _display.showStartupInfo(WiFi.localIP().toString());
     _startupScreenShown = true;
   }
   if (now - _stateEnterTime >= STARTUP_SPLASH_DURATION) {
@@ -245,7 +229,7 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
 
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.enabledParkIds.size() == 0) {
-    _display.showNoData(NoDataReason::NO_PARKS);
+    _display.showNoData(NoDataReason::NO_PARKS, WiFi.localIP().toString());
     return;
   }
 
@@ -429,7 +413,7 @@ void AppStateManager::enterReconnecting() {
 void AppStateManager::enterNoParksConfigured() {
   // Reached from the startup splash when no parks are set. Without this the
   // stale splash would stay on screen (the tick handler is a no-op).
-  _display.showNoData(NoDataReason::NO_PARKS);
+  _display.showNoData(NoDataReason::NO_PARKS, WiFi.localIP().toString());
 }
 
 void AppStateManager::tickReconnecting(unsigned long now) {
@@ -450,7 +434,6 @@ void AppStateManager::tickReconnecting(unsigned long now) {
     syncParkTimezone(true);  // force: re-sync NTP after the outage
     resetCycleTimers();
     _webServer.begin();
-    startMdns();
     transitionTo(SystemState::WAIT_TIME_CYCLE);
     return;
   }
@@ -701,7 +684,7 @@ void AppStateManager::loadParkData() {
       updateLed();
     } else {
       _parkLoadFailures++;
-      _display.showNoData(NoDataReason::NO_RIDES);
+      _display.showNoData(NoDataReason::NO_RIDES, WiFi.localIP().toString());
     }
   } else {
     _parkLoadFailures++;
@@ -714,7 +697,7 @@ void AppStateManager::loadParkData() {
 void AppStateManager::advanceToNextPark() {
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.enabledParkIds.size() == 0) {
-    _display.showNoData(NoDataReason::NO_PARKS);
+    _display.showNoData(NoDataReason::NO_PARKS, WiFi.localIP().toString());
     return;
   }
   _parkLoadFailures = 0;
@@ -741,7 +724,7 @@ void AppStateManager::restartCycle() {
   _parkLoadFailures = 0;
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.enabledParkIds.size() == 0) {
-    _display.showNoData(NoDataReason::NO_PARKS);
+    _display.showNoData(NoDataReason::NO_PARKS, WiFi.localIP().toString());
     return;
   }
 
@@ -880,7 +863,7 @@ void AppStateManager::repaintAfterResetWarning() {
       updateLed();
       break;
     case SystemState::NO_PARKS_CONFIGURED:
-      _display.showNoData(NoDataReason::NO_PARKS);
+      _display.showNoData(NoDataReason::NO_PARKS, WiFi.localIP().toString());
       break;
     case SystemState::RECONNECTING:
       _display.showNoData(_wifiTrouble ? NoDataReason::WIFI_TROUBLE

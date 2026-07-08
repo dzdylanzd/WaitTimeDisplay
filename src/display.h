@@ -42,7 +42,8 @@ public:
   void updateRideIfChanged(const RideInfo& ride, int rideIdx);
   void redrawWaitTime(const RideInfo& ride);
 
-  void showNoData(NoDataReason reason = NoDataReason::FETCH_FAILED);
+  // ipAddress is only used by NO_PARKS/NO_RIDES, to point the user at the web UI.
+  void showNoData(NoDataReason reason = NoDataReason::FETCH_FAILED, const String& ipAddress = "");
   void showFactoryResetWarning();   // BOOT held 10 s — "keep holding to erase"
   void showFactoryResetting();      // BOOT held 20 s — painted just before restart
   // OTA update in progress (web-UI triggered). Both force an immediate

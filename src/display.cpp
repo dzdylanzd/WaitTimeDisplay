@@ -905,7 +905,7 @@ void DisplayController::setCustomPalette(uint32_t hdrRgb, uint32_t accRgb,
 // Public API — status screens
 // ---------------------------------------------------------------------------
 
-void DisplayController::showNoData(NoDataReason reason) {
+void DisplayController::showNoData(NoDataReason reason, const String& ipAddress) {
     _loadStatus();
 
     switch (reason) {
@@ -915,7 +915,7 @@ void DisplayController::showNoData(NoDataReason reason) {
         lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
         lv_label_set_text(_lblStSub, "Configure parks to get started");
         lv_label_set_text(_lblStBody, "Open your browser and visit:");
-        lv_label_set_text(_lblStExtra, "queuewatch.local");
+        lv_label_set_text(_lblStExtra, ipAddress.c_str());
         break;
 
     case NoDataReason::NO_RIDES:
@@ -924,7 +924,7 @@ void DisplayController::showNoData(NoDataReason reason) {
         lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
         lv_label_set_text(_lblStSub, "Your ride filter hides every ride");
         lv_label_set_text(_lblStBody, "Adjust the filter in your browser:");
-        lv_label_set_text(_lblStExtra, "queuewatch.local");
+        lv_label_set_text(_lblStExtra, ipAddress.c_str());
         break;
 
     case NoDataReason::WIFI_LOST:
