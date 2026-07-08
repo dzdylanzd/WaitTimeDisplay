@@ -1,4 +1,5 @@
 #include <WiFi.h>
+#include <ESPmDNS.h>
 #include "appstate.h"
 #include "tzhelper.h"
 #include "quiethours.h"
@@ -175,7 +176,19 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
   if (WiFi.status() == WL_CONNECTED) {
     _wifiTrouble = false;
     _webServer.begin();  // revive the config UI if a portal session stopped it
+    startMdns();
     transitionTo(SystemState::STARTUP_INFO);
+  }
+}
+
+// Registers "queuewatch.local" so the config page's hint actually resolves.
+// MDNS.begin() must only be called once per WiFi association — repeated
+// calls after a reconnect are a no-op guarded by _mdnsStarted.
+void AppStateManager::startMdns() {
+  if (_mdnsStarted) return;
+  if (MDNS.begin("queuewatch")) {
+    MDNS.addService("http", "tcp", 80);
+    _mdnsStarted = true;
   }
 }
 
@@ -185,7 +198,10 @@ void AppStateManager::tickWifiConnecting(unsigned long now) {
 
 void AppStateManager::tickStartupInfo(unsigned long now) {
   if (!_startupScreenShown) {
-    _display.showStartupInfo(WiFi.localIP().toString());
+    // mDNS is up by the time we reach here (started right after WiFi
+    // connects, before the STARTUP_INFO transition) so queuewatch.local
+    // is stable across DHCP lease changes, unlike the IP.
+    _display.showStartupInfo(_mdnsStarted ? "queuewatch.local" : WiFi.localIP().toString());
     _startupScreenShown = true;
   }
   if (now - _stateEnterTime >= STARTUP_SPLASH_DURATION) {
@@ -434,6 +450,7 @@ void AppStateManager::tickReconnecting(unsigned long now) {
     syncParkTimezone(true);  // force: re-sync NTP after the outage
     resetCycleTimers();
     _webServer.begin();
+    startMdns();
     transitionTo(SystemState::WAIT_TIME_CYCLE);
     return;
   }

@@ -237,6 +237,7 @@ R"rawliteral(
   <a href="#sec-wait">&#127912; Wait colours</a>
   <a href="#sec-options">&#11088; Options</a>
   <a href="#sec-firmware">&#8635; Firmware</a>
+  <a href="#sec-devicecontrol">&#127918; Device control</a>
   <a href="#sec-backup">&#128190; Backup</a>
   <a href="#sec-danger">&#9888; Reset</a>
 </div></div>

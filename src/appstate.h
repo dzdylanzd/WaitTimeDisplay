@@ -149,6 +149,9 @@ private:
   bool          _lastAppliedFlip       = false; // LCD_Init leaves it unflipped
   uint8_t       _lastAppliedPalette    = 0;     // screens are built in palette 0
 
+  bool          _mdnsStarted       = false;  // MDNS.begin() is not safe to call twice
+  void          startMdns();
+
   int           _wifiFailCount     = 0;
   bool          _wifiTrouble       = false;  // trouble screen shown, retrying
   unsigned long _lastWiFiTry       = 0;
