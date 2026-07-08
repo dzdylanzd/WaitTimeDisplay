@@ -364,7 +364,7 @@ void AppStateManager::refreshRideData() {
     if (_rides[i].id != prevId[i] || _rides[i].name != _lastRideNames[i])
       structureChanged = true;
     else if (_rides[i].waitTime != prevWait[i] || _rides[i].status != prevStatus[i] ||
-             _rides[i].nextShowMin != prevShow[i] || _rides[i].trend != 0)
+             _rides[i].nextShowMin != prevShow[i])
       waitsChanged = true;
   }
 
@@ -372,10 +372,12 @@ void AppStateManager::refreshRideData() {
 
   if (_rideCount == 0) return;  // allRidesClosed()/loadParkData paths handle empty
   if (structureChanged) {
+    stampShownTrend(_rides[_currentRideIndex]);
     _display.drawBackground();
     _display.drawParkName(_currentParkName, true);
     _display.displayRide(_rides[_currentRideIndex], _currentRideIndex);
   } else if (waitsChanged) {
+    stampShownTrend(_rides[_currentRideIndex]);
     _display.redrawWaitTime(_rides[_currentRideIndex]);
   }
   updateLed();
@@ -567,19 +569,29 @@ void AppStateManager::applyRideFilter() {
   _rideCount = writeIdx;
 }
 
-// Stamp each freshly fetched ride with its trend vs. the previous refresh
-// and its favorite flag. Runs after applyRideFilter(), before sorting —
-// TrendStore keys by ride id, so ordering doesn't matter.
+// Stamp each freshly fetched ride with its favorite flag. Runs after
+// applyRideFilter(), before sorting (favorites-first needs the flag set).
+// The trend arrow is NOT computed here — it's stamped when a ride is shown
+// (see stampShownTrend), so it reflects the change since the ride was last
+// on screen rather than since the last API poll.
 void AppStateManager::annotateRides() {
-  for (int i = 0; i < _rideCount; i++) {
-    RideInfo& r = _rides[i];
-    // TrendStore keys by int32 — hash the UUID (see idhash.h).
-    int delta = _trends.updateAndGetDelta((int32_t)fnv1a32(r.id.c_str()),
-                                          r.isOpen() ? r.waitTime : -1);
-    r.trend      = (delta > 0) ? 1 : (delta < 0) ? -1 : 0;
-    r.trendDelta = (int16_t)delta;
-    r.favorite   = _cfg.isRideFavorite(_currentParkId, r.id);
-  }
+  for (int i = 0; i < _rideCount; i++)
+    _rides[i].favorite = _cfg.isRideFavorite(_currentParkId, _rides[i].id);
+}
+
+// Compute the trend arrow for a ride about to be displayed, comparing its
+// current wait to the value stored the LAST time it was shown, then commit
+// the new value as that ride's baseline. Called when a ride rotates into
+// view or its on-screen value changes on a refresh — never on plain clock
+// redraws, so the arrow persists while the ride sits on screen instead of
+// resetting to flat after one tick.
+void AppStateManager::stampShownTrend(RideInfo& r) {
+  // TrendStore keys by int32 — hash the UUID (see idhash.h). Closed/no-data
+  // observations pass -1, which TrendStore ignores (keeps the last value).
+  int delta = _trends.updateAndGetDelta((int32_t)fnv1a32(r.id.c_str()),
+                                        r.isOpen() ? r.waitTime : -1);
+  r.trend      = (delta > 0) ? 1 : (delta < 0) ? -1 : 0;
+  r.trendDelta = (int16_t)delta;
 }
 
 // Fetch the current park's rides and run them through the shared
@@ -658,6 +670,7 @@ void AppStateManager::loadParkData() {
       _display.drawBackground();
       _display.drawParkName(_currentParkName, true);
       _currentRideIndex = 0;
+      stampShownTrend(_rides[_currentRideIndex]);
       _display.displayRide(_rides[_currentRideIndex], _currentRideIndex);
       updateLed();
     } else {
@@ -766,6 +779,7 @@ void AppStateManager::advanceRide() {
     advanceToNextPark();
   } else {
     _display.drawParkName(_currentParkName, false);
+    stampShownTrend(_rides[_currentRideIndex]);
     _display.updateRideIfChanged(_rides[_currentRideIndex], _currentRideIndex);
     updateLed();
   }

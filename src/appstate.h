@@ -64,6 +64,7 @@ private:
   void showClosedParkScreen(int nowMin);
   void applyRideFilter();
   void annotateRides();
+  void stampShownTrend(RideInfo& r);
   void applyRideDisplayOptions();
   bool fetchAndProcessRideData();
   void loadParkData();

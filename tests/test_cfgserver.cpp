@@ -43,3 +43,33 @@ TEST_CASE("jsonEscape: escapes control characters") {
 // (mergePerParkJson was replaced by ConfigManager::applyRideSelections —
 //  its per-park merge/cleanup/limit behaviour is covered in
 //  test_configmanager.cpp.)
+
+TEST_CASE("countryForDestination: maps destinations to countries") {
+    // The user's parks
+    CHECK(String(countryForDestination("Parc Asterix")) == "France");
+    CHECK(String(countryForDestination("Disneyland Paris")) == "France");
+    CHECK(String(countryForDestination("Tokyo Disney Resort")) == "Japan");
+    CHECK(String(countryForDestination("Universal Orlando Resort")) == "USA");
+    CHECK(String(countryForDestination("Walt Disney World\xC2\xAE Resort")) == "USA");
+    CHECK(String(countryForDestination("Phantasialand")) == "Germany");
+    CHECK(String(countryForDestination("Attractiepark Toverland")) == "Netherlands");
+    CHECK(String(countryForDestination("Efteling")) == "Netherlands");
+    // Multi-country chains resolve to the right country, not the chain's home
+    CHECK(String(countryForDestination("Six Flags Magic Mountain")) == "USA");
+    CHECK(String(countryForDestination("Six Flags Mexico")) == "Mexico");
+    CHECK(String(countryForDestination("Six Flags Qiddiya City")) == "Saudi Arabia");
+    CHECK(String(countryForDestination("Universal Studios Japan")) == "Japan");
+    CHECK(String(countryForDestination("Universal Studios Singapore")) == "Singapore");
+    CHECK(String(countryForDestination("Shanghai Disney Resort")) == "China");
+    CHECK(String(countryForDestination("Hong Kong Disneyland Parks")) == "Hong Kong");
+    CHECK(String(countryForDestination("LEGOLAND Deutschland")) == "Germany");
+    CHECK(String(countryForDestination("LEGOLAND\xC2\xAE Korea")) == "South Korea");
+    CHECK(String(countryForDestination("LEGOLAND California")) == "USA");
+    // Australia (Gold Coast group must win over the SeaWorld keyword)
+    CHECK(String(countryForDestination("Sea World Gold Coast")) == "Australia");
+    CHECK(String(countryForDestination("Warner Bros. Movie World")) == "Australia");
+    // Oaxtepec (Mexico) must win over the Hurricane Harbor US catch-all
+    CHECK(String(countryForDestination("Hurricane Harbor Oaxtepec")) == "Mexico");
+    // Unknown falls through to Other
+    CHECK(String(countryForDestination("Totally New Park")) == "Other");
+}

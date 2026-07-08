@@ -156,6 +156,7 @@ body{background:radial-gradient(1100px 560px at 50% -8%,color-mix(in srgb,var(--
 .search input:focus{border-color:var(--accent)}
 .search .mag{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:.9rem}
 
+.countryhdr{color:var(--text);font-size:.86rem;font-weight:800;letter-spacing:.3px;margin:18px 0 2px;padding-bottom:4px;border-bottom:1px solid var(--border2)}
 .grouphdr{color:var(--gold);font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;margin:14px 0 6px}
 .grouphdr .landsel{background:none;border:1px solid var(--border2);color:var(--muted);font-size:.62rem;font-weight:600;padding:2px 8px;border-radius:10px;cursor:pointer;margin-left:5px;text-transform:none;letter-spacing:0}
 .grouphdr .landsel:hover{border-color:var(--accent);color:var(--text)}
@@ -590,14 +591,20 @@ function updateParkCount(){const n=allParks.filter(p=>p.enabled).length;$('parkC
 function renderParkList(){const c=$('parkList');updateParkCount();
   if(!allParks.length){c.innerHTML='<p class="empty">Tap &ldquo;Refresh&rdquo; to load the park list.</p>';return;}
   const q=($('parkSearch').value||'').toLowerCase();
-  let html='',lastGroup='',shown=0;
-  for(const park of allParks){
-    if(q&&park.name.toLowerCase().indexOf(q)<0)continue;
-    shown++;
+  // Group by country (outer) then destination (inner). Stable sort keeps each
+  // destination's parks in the server's original order.
+  const list=allParks.filter(p=>!q||p.name.toLowerCase().indexOf(q)>=0);
+  list.sort((a,b)=>{const ca=a.country||'Other',cb=b.country||'Other';
+    if(ca!==cb)return ca<cb?-1:1;
+    const ga=a.group||'',gb=b.group||'';return ga<gb?-1:ga>gb?1:0;});
+  let html='',lastC='',lastGroup='';
+  for(const park of list){
+    const country=park.country||'Other';
+    if(country!==lastC){lastC=country;lastGroup='';html+='<div class="countryhdr">'+escapeHtml(country)+'</div>';}
     if(park.group!==lastGroup){lastGroup=park.group;html+='<div class="grouphdr">'+escapeHtml(park.group)+'</div>';}
     html+='<div class="item"><label class="switch"><input type="checkbox" id="pk_'+park.id+'" '+(park.enabled?'checked':'')+' onchange="togglePark(\''+park.id+'\')"><span class="slider"></span></label><span class="name">'+escapeHtml(park.name)+'</span></div>';
   }
-  if(!shown)html='<p class="empty">No parks match your search.</p>';
+  if(!list.length)html='<p class="empty">No parks match your search.</p>';
   c.innerHTML=html;}
 
 function togglePark(id){const park=allParks.find(p=>p.id===id);if(park){park.enabled=!park.enabled;updateParkCount();populateParkSelector(allParks.filter(p=>p.enabled));}}
@@ -814,6 +821,64 @@ void ConfigWebServer::handleRoot() {
   _server.send_P(200, "text/html", CONFIG_HTML);
 }
 
+// themeparks.wiki gives no country, so the park picker's country grouping is
+// derived from the destination (resort) name. Rules are checked in order —
+// specific overrides for multi-country chains (Disney/Universal/Six Flags/
+// LEGOLAND) come first, then per-country keywords. Anything unmatched groups
+// under "Other". Covers every destination the API currently lists; new parks
+// of a known chain/region still resolve, genuinely new ones fall to "Other".
+static const char* countryForDestination(const String& dest) {
+  struct Rule { const char* needle; const char* country; };
+  static const Rule RULES[] = {
+    // multi-country chains — specific first
+    {"Disneyland Paris", "France"}, {"Tokyo Disney", "Japan"},
+    {"Shanghai Disney", "China"},   {"Hong Kong Disney", "Hong Kong"},
+    {"Walt Disney World", "USA"},   {"Disneyland Resort", "USA"},
+    {"Universal Studios Japan", "Japan"}, {"Universal Studios Singapore", "Singapore"},
+    {"Universal Beijing", "China"}, {"Universal Orlando", "USA"},
+    {"Universal Studios Hollywood", "USA"},
+    {"Six Flags Mexico", "Mexico"}, {"Qiddiya", "Saudi Arabia"},
+    {"Oaxtepec", "Mexico"},         {"Six Flags", "USA"},
+    {"LEGOLAND Deutschland", "Germany"}, {"LEGOLAND Billund", "Denmark"},
+    {"LEGOLAND Windsor", "United Kingdom"}, {"LEGOLAND Japan", "Japan"},
+    {"Korea", "South Korea"},
+    // by country / region
+    {"Parc Asterix", "France"}, {"Nigloland", "France"}, {"Walibi Rh", "France"},
+    {"Futuroscope", "France"},
+    {"Europa-Park", "Germany"}, {"Hansa-Park", "Germany"}, {"Heide Park", "Germany"},
+    {"Plopsaland Deutschland", "Germany"}, {"Phantasialand", "Germany"},
+    {"Movie Park Germany", "Germany"},
+    {"Toverland", "Netherlands"}, {"Walibi Holland", "Netherlands"}, {"Efteling", "Netherlands"},
+    {"Plopsaland Belgium", "Belgium"}, {"Bobbejaanland", "Belgium"},
+    {"Bellewaerde", "Belgium"}, {"Walibi Belgium", "Belgium"},
+    {"Thorpe Park", "United Kingdom"}, {"Alton Towers", "United Kingdom"},
+    {"Chessington", "United Kingdom"}, {"Paultons", "United Kingdom"},
+    {"Flamingo Land", "United Kingdom"}, {"Blackpool", "United Kingdom"},
+    {"Madrid", "Spain"}, {"PortAventura", "Spain"},
+    {"Gardaland", "Italy"}, {"Mirabilandia", "Italy"},
+    {"Liseberg", "Sweden"}, {"Djurs Sommerland", "Denmark"},
+    {"Fuji-Q", "Japan"},
+    {"Chimelong", "China"}, {"Guangzhou", "China"}, {"Shanghai", "China"}, {"Beijing", "China"},
+    {"Ocean Park", "Hong Kong"}, {"Hong Kong", "Hong Kong"},
+    {"Everland", "South Korea"}, {"Lotte World", "South Korea"},
+    {"Genting", "Malaysia"},
+    {"Canada's Wonderland", "Canada"}, {"La Ronde", "Canada"},
+    {"Gold Coast", "Australia"}, {"Movie World", "Australia"},
+    {"Paradise Country", "Australia"}, {"Wet'n'Wild", "Australia"},
+    // US chains / regionless US parks (catch-alls last)
+    {"SeaWorld", "USA"}, {"Sea World", "USA"}, {"Busch Gardens", "USA"},
+    {"Cedar Point", "USA"}, {"Kings Island", "USA"}, {"Kings Dominion", "USA"},
+    {"Kennywood", "USA"}, {"Dollywood", "USA"}, {"Silver Dollar City", "USA"},
+    {"Hersheypark", "USA"}, {"Knott", "USA"}, {"Carowinds", "USA"},
+    {"Dorney", "USA"}, {"Valleyfair", "USA"}, {"Worlds of Fun", "USA"},
+    {"Michigan", "USA"}, {"Knoebels", "USA"}, {"Hurricane Harbor", "USA"},
+    {"Schlitterbahn", "USA"}, {"Great America", "USA"}, {"LEGOLAND", "USA"},
+  };
+  for (const Rule& r : RULES)
+    if (dest.indexOf(r.needle) >= 0) return r.country;
+  return "Other";
+}
+
 void ConfigWebServer::handleApiParks() {
   std::vector<String> ids; std::vector<String> names; std::vector<String> groups;
   if (!_api.fetchAvailableParks(ids, names, groups)) {
@@ -834,6 +899,7 @@ void ConfigWebServer::handleApiParks() {
     json += "{\"id\":\"";  json += ids[i]; json += "\"";
     json += ",\"name\":\""; json += jsonEscape(names[i]); json += "\"";
     json += ",\"group\":\""; json += jsonEscape(groups[i]); json += "\"";
+    json += ",\"country\":\""; json += countryForDestination(groups[i]); json += "\"";
     json += ",\"enabled\":"; json += enabled ? "true" : "false";
     json += "}";
   }
@@ -947,8 +1013,12 @@ void ConfigWebServer::handleSaveConfig() {
   if (!_server.hasArg("plain")) {
     _server.send(400, "application/json", "{\"success\":false,\"error\":\"No body\"}"); return;
   }
-  DynamicJsonDocument doc(12288);
-  if (deserializeJson(doc, _server.arg("plain"))) {
+  // Sized off the actual body: a many-parks, fully-filtered save can exceed
+  // any fixed guess, and ArduinoJson needs roughly 2x the raw JSON on 64-bit
+  // platforms (irrelevant on-device, but the sim build hit this).
+  const String& body = _server.arg("plain");
+  DynamicJsonDocument doc(body.length() * 3 + 2048);
+  if (deserializeJson(doc, body)) {
     _server.send(400, "application/json", "{\"success\":false,\"error\":\"JSON parse error\"}"); return;
   }
   FEED_WDT();
