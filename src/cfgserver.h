@@ -32,6 +32,13 @@ public:
   bool consumeOtaStartRequest(String& outAssetUrl);
   void setOtaStatus(OtaUiState state, uint8_t progressPct, const String& message = "");
 
+  // Device Control tab: "Next attraction" / "Next park" buttons act just
+  // like the BOOT button's short/long press, but from the web UI. Same
+  // poll-and-consume idiom as consumeOtaStartRequest() — AppStateManager
+  // drains these in tickWaitTimeCycle().
+  bool consumeNextRideRequest();
+  bool consumeNextParkRequest();
+
 private:
   WebServer      _server;
   ConfigManager& _cfgMgr;
@@ -43,6 +50,9 @@ private:
   bool           _pendingFactoryReset = false;  // restart deferred to handleClient()
   bool           _started             = false;  // makes begin()/stop() idempotent
   bool           _handlersRegistered  = false;  // register routes only once
+
+  bool           _pendingNextRide     = false;
+  bool           _pendingNextPark     = false;
 
   bool           _pendingOtaStart     = false;
   String         _otaLatestVersion;              // populated by handleApiOtaCheck()
@@ -60,6 +70,8 @@ private:
   void handleApiOtaCheck();
   void handleApiOtaStart();
   void handleApiOtaStatus();
+  void handleApiDeviceNextRide();
+  void handleApiDeviceNextPark();
   void handleNotFound();
 };
 

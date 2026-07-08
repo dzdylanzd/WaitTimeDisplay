@@ -379,6 +379,14 @@ R"rawliteral(
     </div>
     <p class="hint" id="otaStatusLine" style="display:none"></p>
   </div>
+  <div class="section" id="sec-devicecontrol">
+    <h2><span class="ico">&#127918;</span> Device control</h2>
+    <p class="hint">Same as the BOOT button on the device: short press = next attraction, long press = next park.</p>
+    <div class="toolbar" style="margin-bottom:0">
+      <button type="button" class="btn btn-ghost" id="nextRideBtn" onclick="deviceNext('ride',this)">Next attraction</button>
+      <button type="button" class="btn btn-ghost" id="nextParkBtn" onclick="deviceNext('park',this)">Next park</button>
+    </div>
+  </div>
   <div class="section" id="sec-backup">
     <h2><span class="ico">&#128190;</span> Backup &amp; Restore</h2>
     <p class="hint">Export the current parks, ride filters and timing settings to a file, or restore a previously exported configuration.</p>
@@ -431,6 +439,14 @@ async function otaPollStatus(){
       $('otaInstallBtn').disabled=false;$('otaCheckBtn').disabled=false;}
   }catch(e){/* device likely restarting; stop polling */clearInterval(otaPolling);
     line.textContent='Update installed. Restarting...';}}
+
+async function deviceNext(what,btn){
+  btn.disabled=true;
+  try{const res=await fetch('/api/device/next-'+what,{method:'POST'});const r=await res.json();
+    if(r.success)toast(what==='ride'?'Advancing to next attraction':'Advancing to next park','success');
+    else toast('Failed','error');
+  }catch(e){toast('Request failed','error');}
+  btn.disabled=false;}
 
 async function factoryReset(btn){
   if(!confirm('Factory reset will erase the WiFi credentials and ALL settings, then restart the device.\n\nContinue?'))return;
@@ -787,6 +803,8 @@ void ConfigWebServer::begin() {
     _server.on("/api/config", HTTP_GET,  [this]() { handleApiConfig(); });
     _server.on("/api/config", HTTP_POST, [this]() { handleSaveConfig(); });
     _server.on("/api/factory-reset", HTTP_POST, [this]() { handleFactoryReset(); });
+    _server.on("/api/device/next-ride", HTTP_POST, [this]() { handleApiDeviceNextRide(); });
+    _server.on("/api/device/next-park", HTTP_POST, [this]() { handleApiDeviceNextPark(); });
     _server.on("/api/ota/check",  HTTP_GET,  [this]() { handleApiOtaCheck(); });
     _server.on("/api/ota/start",  HTTP_POST, [this]() { handleApiOtaStart(); });
     _server.on("/api/ota/status", HTTP_GET,  [this]() { handleApiOtaStatus(); });
@@ -1175,6 +1193,28 @@ void ConfigWebServer::handleSaveConfig() {
   String response = "{\"success\":true,\"message\":\"Configuration saved\",\"effective\":" +
                      effectiveJson + "}";
   _server.send(200, "application/json", response);
+}
+
+bool ConfigWebServer::consumeNextRideRequest() {
+  if (!_pendingNextRide) return false;
+  _pendingNextRide = false;
+  return true;
+}
+
+bool ConfigWebServer::consumeNextParkRequest() {
+  if (!_pendingNextPark) return false;
+  _pendingNextPark = false;
+  return true;
+}
+
+void ConfigWebServer::handleApiDeviceNextRide() {
+  _pendingNextRide = true;
+  _server.send(200, "application/json", "{\"success\":true}");
+}
+
+void ConfigWebServer::handleApiDeviceNextPark() {
+  _pendingNextPark = true;
+  _server.send(200, "application/json", "{\"success\":true}");
 }
 
 void ConfigWebServer::handleFactoryReset() {

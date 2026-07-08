@@ -218,6 +218,15 @@ void AppStateManager::tickWaitTimeCycle(unsigned long now) {
     return;
   }
 
+  // Device Control tab's "Next attraction" / "Next park" buttons act just
+  // like the BOOT button's short/long press (see onButtonEvent()).
+  if (_webServer.consumeNextRideRequest()) {
+    if (_rideCount > 0 && !_showingClosedPark) advanceRide();
+  }
+  if (_webServer.consumeNextParkRequest()) {
+    advanceToNextPark();
+  }
+
   const RuntimeConfig& cfg = _cfg.getConfig();
   if (cfg.enabledParkIds.size() == 0) {
     _display.showNoData(NoDataReason::NO_PARKS);
