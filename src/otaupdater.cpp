@@ -108,9 +108,9 @@ OtaResult OtaUpdater::performUpdate(const String& assetUrl, OtaProgressFn onProg
   uint8_t buf[1024];
   size_t written = 0;
   while (http.connected() && written < (size_t)contentLength) {
-    size_t avail = stream->available();
-    if (avail == 0) { delay(10); FEED_WDT(); continue; }
-    size_t toRead = avail > sizeof(buf) ? sizeof(buf) : avail;
+    int avail = stream->available();
+    if (avail <= 0) { delay(10); FEED_WDT(); continue; }
+    size_t toRead = (size_t)avail > sizeof(buf) ? sizeof(buf) : (size_t)avail;
     size_t n = stream->readBytes(buf, toRead);
     if (n == 0) break;
     if (Update.write(buf, n) != n) {
