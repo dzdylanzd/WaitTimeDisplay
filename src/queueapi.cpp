@@ -110,13 +110,20 @@ const QueueApi::TZCache* QueueApi::lookupPark(const String& parkId) {
   const char* tz = doc["timezone"] | "";
   if (strlen(tz) == 0) return nullptr;
 
-  // Even when the cache is full the entry must be returned, so the
-  // last slot is overwritten rather than dropping the result.
-  int slot = (_tzCacheCount < TZ_CACHE_SIZE) ? _tzCacheCount
-                                             : TZ_CACHE_SIZE - 1;
+  // Even when the cache is full the entry must be returned, so once full
+  // slots are recycled round-robin (oldest-written first) rather than
+  // always clobbering the same last slot, which would otherwise permanently
+  // thrash a single park in and out once more than TZ_CACHE_SIZE distinct
+  // parks have ever been looked up.
+  int slot;
+  if (_tzCacheCount < TZ_CACHE_SIZE) {
+    slot = _tzCacheCount++;
+  } else {
+    slot = _tzCacheNext;
+    _tzCacheNext = (_tzCacheNext + 1) % TZ_CACHE_SIZE;
+  }
   _tzCache[slot].parkId = parkId;
   _tzCache[slot].tz     = String(tz);
-  if (_tzCacheCount < TZ_CACHE_SIZE) _tzCacheCount++;
   return &_tzCache[slot];
 }
 
@@ -180,10 +187,14 @@ bool QueueApi::getParkHours(const String& parkId, const String& todayDate,
 
   if (slot < 0) {
     // Even when the cache is full the result must be cached somewhere, so
-    // the last slot is overwritten rather than dropping it (matches TZCache).
-    slot = (_hoursCacheCount < HOURS_CACHE_SIZE) ? _hoursCacheCount
-                                                 : HOURS_CACHE_SIZE - 1;
-    if (_hoursCacheCount < HOURS_CACHE_SIZE) _hoursCacheCount++;
+    // once full slots are recycled round-robin rather than always
+    // clobbering the same last slot (matches TZCache).
+    if (_hoursCacheCount < HOURS_CACHE_SIZE) {
+      slot = _hoursCacheCount++;
+    } else {
+      slot = _hoursCacheNext;
+      _hoursCacheNext = (_hoursCacheNext + 1) % HOURS_CACHE_SIZE;
+    }
   }
   _hoursCache[slot].parkId = parkId;
   _hoursCache[slot].hours  = h;

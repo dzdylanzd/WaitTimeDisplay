@@ -95,6 +95,7 @@ private:
   static constexpr int TZ_CACHE_SIZE = 20;
   TZCache _tzCache[TZ_CACHE_SIZE];
   int     _tzCacheCount = 0;
+  int     _tzCacheNext  = 0;   // round-robin write cursor once full
 
   const TZCache* lookupPark(const String& parkId);
 
@@ -106,6 +107,7 @@ private:
   static constexpr int HOURS_CACHE_SIZE = 20;
   HoursCache _hoursCache[HOURS_CACHE_SIZE];
   int        _hoursCacheCount = 0;
+  int        _hoursCacheNext  = 0;   // round-robin write cursor once full
 };
 
 #endif // QUEUEAPI_H

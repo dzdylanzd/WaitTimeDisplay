@@ -281,6 +281,40 @@ TEST_CASE("getParkTimezone: caches result (second call uses cache, not HTTP)") {
     CHECK(api.getParkTimezone(PARK_ID) == "America/New_York");  // cache hit
 }
 
+// Cache holds 20 entries (TZ_CACHE_SIZE). A 21st distinct park should evict
+// the OLDEST entry (round-robin), not permanently thrash whichever park
+// happens to land in the last slot on every subsequent lookup.
+TEST_CASE("getParkTimezone: cache full evicts oldest entry round-robin, not the same slot forever") {
+    MockHTTP::clear();
+    QueueApi api;
+    char parkId[37];
+    for (int p = 0; p < 20; p++) {
+        snprintf(parkId, sizeof(parkId), "00000000-0000-0000-0000-0000000000%02d", p);
+        MockHTTP::set((String("https://api.themeparks.wiki/v1/entity/") + parkId).c_str(),
+                      R"({"timezone":"Europe/Amsterdam"})");
+        CHECK(api.getParkTimezone(parkId) == "Europe/Amsterdam");
+    }
+    MockHTTP::clear();   // cache should now serve all 20 with no HTTP at all
+
+    // Park 0 (the oldest) is still cached — a 21st distinct park hasn't
+    // been looked up yet, so nothing has been evicted.
+    CHECK(api.getParkTimezone("00000000-0000-0000-0000-000000000000") == "Europe/Amsterdam");
+
+    // A 21st distinct park forces an eviction. It must evict park 0 (the
+    // oldest write), not repeatedly clobber whatever's in the last slot.
+    MockHTTP::set("https://api.themeparks.wiki/v1/entity/00000000-0000-0000-0000-000000000020",
+                  R"({"timezone":"Asia/Tokyo"})");
+    CHECK(api.getParkTimezone("00000000-0000-0000-0000-000000000020") == "Asia/Tokyo");
+    MockHTTP::clear();
+
+    // Park 0 was evicted: now a cache miss (HTTP fails since mocks were
+    // cleared) falls back to UTC.
+    CHECK(api.getParkTimezone("00000000-0000-0000-0000-000000000000") == "UTC");
+    // Park 19 (the last slot) was NOT touched by this eviction and is still
+    // cached — proving eviction isn't just "always clobber the last slot".
+    CHECK(api.getParkTimezone("00000000-0000-0000-0000-000000000019") == "Europe/Amsterdam");
+}
+
 // ── normalizeId ───────────────────────────────────────────────────────────────
 
 TEST_CASE("normalizeId: strips dashes and lowercases") {
