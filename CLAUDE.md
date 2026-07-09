@@ -91,9 +91,13 @@ Creates eight global singletons (incl. `StatusLed` and `Button`), wires them tog
 | `src/ridefilter.cpp/h` | Pure `applyDisplayOptions()`: skip-closed (hides Down/Closed/Refurbishment AND shows with no remaining showtime) / min-wait (attractions only) filtering (reverts if it would empty the list) + favorites-first / wait-desc stable sort. |
 | `src/statusled.cpp/h` | Onboard WS2812 (GPIO8, `rgbLedWrite` — Arduino-ESP32 3.x's RMT-driven successor to `neopixelWrite`, same `(pin, r, g, b)` signature) mirrors the current ride's wait-level colour; brightness tracks the backlight. Can be disabled entirely via the web UI (`ledEnabled`). |
 | `src/button.cpp/h` | BOOT button (GPIO9, active-low): debounced short press = next ride, 700 ms long press = next park, 10 s hold = factory-reset warning screen, 20 s hold = factory reset + restart (release during the warning cancels). `update()` is a pure, tested state machine. |
+| `src/otaupdater.cpp/h` | GitHub Releases OTA: `checkForUpdate()` (queries the repo's `releases/latest`, compares tags via `isNewerVersion()`), `performUpdate()` (downloads + flashes via `Update.h`, following the asset's one redirect), and static rollback/boot-confirmation helpers (`isPendingConfirmation()`/`markBootSuccessful()`). `extractLatestRelease()` (pure JSON parse) is header-only and unit-tested without pulling in WiFi/Update.h. |
+| `src/versioncompare.h` | Pure `parseVersion()` / `isNewerVersion()` — dotted numeric version parsing (up to 4 components, tolerates a leading `v` and a `-rc1`-style suffix) and semantic newer-than comparison, used by the OTA update check. |
+| `src/ridereindex.h` | Pure `reindexAfterRefresh()` — re-finds, by ride id, the index the user was looking at after a refresh that may have resorted the list (e.g. wait-desc mode); falls back to the old index (clamped) or 0. |
+| `src/waitdefaults.h` | Single source of the wait-level defaults (`WAIT_COLOR_DEFAULTS[5]`, `WAIT_TH_DEFAULTS[3]` = 15/30/45) shared by `RuntimeConfig`, `StatusLed`, `display.cpp`'s `WAIT_THEMES`, and `waitlevel.h`'s `pickWaitLevel()` default arguments. |
 | `src/waitlevel.h` | Shared `pickWaitLevel()` enum — single source of the wait-level bucketing for display themes AND the LED (thresholds default 15/30/45, user-configurable). Status overload: Down → Red, Closed/Refurbishment → Closed level. |
 | `src/quiethours.h` | Pure `inQuietWindow()` (handles overnight wrap; start==end = never quiet). |
-| `src/config.h` | Hardware pin definitions (incl. `RGB_LED_PIN` 8, `BOOT_BTN_PIN` 9) and compile-time constants. |
+| `src/config.h` | Hardware pin definitions (incl. `RGB_LED_PIN` 8, `BOOT_BTN_PIN` 9), `FIRMWARE_VERSION`, and compile-time constants. |
 | `lv_conf.h` | LVGL 8.3 configuration (project root, picked up via `-DLV_CONF_INCLUDE_SIMPLE`). |
 
 ### State machine (`SystemState` enum in `appstate.h`)
@@ -107,7 +111,14 @@ BOOT
                                     └─ no parks ──> NO_PARKS_CONFIGURED          │
 WAIT_TIME_CYCLE                                                                   │
  └─ WiFi lost ──> RECONNECTING ── reconnected ─────────────────────────────────── ┘
+ └─ web-UI "Install" click ──> OTA_DOWNLOADING ──> OTA_FLASHING ──> ESP.restart()
 ```
+
+`OTA_DOWNLOADING`/`OTA_FLASHING` are reached only from `WAIT_TIME_CYCLE` via a
+web-UI-triggered "Install" click (`ConfigWebServer::consumeOtaStartRequest()`);
+the update check itself (`GET /api/ota/check`) runs synchronously inside the
+web request handler, so by the time `OTA_DOWNLOADING` is entered the asset URL
+is already known. See `SystemState` in `appstate.h`.
 
 **Connect failures never fall back into the portal.** On boot timeout
 (`WIFI_CONNECT_TIMEOUT_MS`) or 3 consecutive reconnect failures, the device
@@ -155,9 +166,14 @@ also show in the header above the clock (`setHeaderInfo`).
 The UI "chrome" colours come from the user-selectable palette (`PALETTES[]`
 in display.cpp, default 0 = "Magic Night": deep indigo/purple, warm gold).
 `applyPalette()` restyles all three screens live (no reboot); every colour
-is read through the `PAL` pointer via the `C_*` macros. Keep `PALETTES[]`,
-`COLOR_PALETTE_COUNT` (configmanager.h) and the `PALETTE_DEFS` swatches
-(cfgserver.cpp JS) in sync.
+is read through the `PAL` pointer via the `C_*` macros. The last palette
+index (`CUSTOM_PALETTE_INDEX` = `UI_PALETTE_COUNT`) is a user-defined
+"Custom" palette built from three NVS-stored 0xRRGGBB colours
+(`RuntimeConfig::customHdr/customAccent/customPanel`, saved via
+`ConfigManager::saveCustomPalette()`) rather than a `PALETTES[]` entry — the
+rest of that palette is derived from those three. Keep `PALETTES[]`,
+`COLOR_PALETTE_COUNT` (configmanager.h, currently 22 = `UI_PALETTE_COUNT` + 1
+for Custom) and the `PALETTE_DEFS` swatches (cfgserver.cpp JS) in sync.
 
 Wait themes are NOT palette-dependent: the five level colours (and the
 15/30/45 thresholds) are user-configurable via the web UI's "Wait colours"
@@ -206,7 +222,7 @@ Normal screen switches use `lv_scr_load_anim()` with a 220 ms fade. LVGL handles
 
 ### NVS namespaces
 - `"queuewatch"` — `ConfigManager` (parks, ride filters/favorites, timings, display + ride-display options) and `WiFiManager` (credentials). `ConfigManager::factoryReset()` clears the whole namespace, so it wipes the WiFi credentials too — by design.
-- Keys: `cfg_ver` (config schema version, currently 3 — v<2 wipes `enabled_pks` (queue-times numeric ids), v<3 wipes the old `ride_flt`/`ride_fav` blobs; WiFi/brightness/palette/etc. always survive), `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks` (JSON `[{"id":"<dashed-uuid>","name":...}]`), **per-park ride selections**: `rf_XXXXXXXX` (filter) / `fv_XXXXXXXX` (favorites) where XXXXXXXX = fnv1a32 hex of the dashed park UUID, each a plain concatenation of 8-hex fnv1a32 hashes of ride ids (no JSON; export/import round-trips the hashes) — every park gets its own ~4 KB budget so ~12 fully-filtered parks fit in the 20 KB NVS partition; `sel_idx` (concatenated dashed UUIDs of parks owning selection keys — Preferences can't enumerate). `ConfigManager::applyRideSelections()` merge-applies web saves (absent park = keep, null = clear) and reports rather than truncates on NVS-full, `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr`/`dev_tz`/`pal` (brightness + quiet hours + quiet-hours timezone + status-LED on/off + 180° screen flip + UI colour palette), `wt1`/`wt2`/`wt3`/`wc0`..`wc4` (wait-level thresholds + 0xRRGGBB level colours), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options), `ota_pending` (bool — set just before an OTA reboot, cleared once `AppStateManager` sees enough post-update successful fetches; a factory reset correctly wipes a stale flag along with everything else). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
+- Keys: `cfg_ver` (config schema version, currently 3 — v<2 wipes `enabled_pks` (queue-times numeric ids), v<3 wipes the old `ride_flt`/`ride_fav` blobs; WiFi/brightness/palette/etc. always survive), `api_int`/`rot_int`/`closed_int`/`time_int` (timings), `enabled_pks` (JSON `[{"id":"<dashed-uuid>","name":...}]`), **per-park ride selections**: `rf_XXXXXXXX` (filter) / `fv_XXXXXXXX` (favorites) where XXXXXXXX = fnv1a32 hex of the dashed park UUID, each a plain concatenation of 8-hex fnv1a32 hashes of ride ids (no JSON; export/import round-trips the hashes) — every park gets its own ~4 KB budget so ~12 fully-filtered parks fit in the 20 KB NVS partition; `sel_idx` (concatenated dashed UUIDs of parks owning selection keys — Preferences can't enumerate). `ConfigManager::applyRideSelections()` merge-applies web saves (absent park = keep, null = clear) and reports rather than truncates on NVS-full, `brt`/`qt_en`/`qt_sta`/`qt_end`/`qt_brt`/`led_en`/`flip_scr`/`dev_tz`/`pal` (brightness + quiet hours + quiet-hours timezone + status-LED on/off + 180° screen flip + UI colour palette), `cst_h`/`cst_a`/`cst_p` (the user-defined Custom palette's 0xRRGGBB header/accent/panel colours, `saveCustomPalette()`), `wt1`/`wt2`/`wt3`/`wc0`..`wc4` (wait-level thresholds + 0xRRGGBB level colours), `sort_mode`/`fav_first`/`skip_closed`/`min_wait` (ride display options), `ota_pending` (bool — set just before an OTA reboot, cleared once `AppStateManager` sees enough post-update successful fetches; a factory reset correctly wipes a stale flag along with everything else). New scalars use `putInt`/`putBool` only — the sim/tests Preferences stubs don't implement `putUChar`/`putUShort`.
 
 ### Data flow
 1. `QueueApi::fetchRideData()` streams `/entity/{id}/live` element-by-element (via `httpGetJsonArray`) into a `RideInfo[MAX_RIDES]` array: ATTRACTION + SHOW entities only, each with `status` (Operating/Down/Closed/Refurbishment), `kind`, standby `waitTime`, and for shows the next remaining showtime today (`nextShowMin`, park-local minutes — the caller passes `getLocalDateString()` + `getLocalMinutesOfDay()`). On failure the output may be PARTIAL, so `fetchAndProcessRideData()` fetches into a static scratch array and moves it into `_rides` only on success (stale data survives failed refreshes).
