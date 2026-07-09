@@ -262,8 +262,8 @@ void WiFiManager::startHTTPServer() {
       _webServer.send(200, "text/html", buildConfigPage("SSID cannot be empty", _ssid));
       return;
     }
-    _webServer.send(200, "text/html", buildSuccessPage(ssid));
     saveCredentials(ssid, pass);
+    _webServer.send(200, "text/html", buildSuccessPage(ssid));
     _portalSaved = true;
   });
   _webServer.onNotFound([this]() {

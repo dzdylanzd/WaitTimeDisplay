@@ -697,6 +697,7 @@ void AppStateManager::loadParkData() {
     _parkLoadFailures++;
     _display.showNoData(NoDataReason::FETCH_FAILED);
     _rideCount = 0;
+    _showingClosedPark = false;  // screen now shows FETCH_FAILED, not closed
   }
   rememberRideNames();
 }
