@@ -270,6 +270,7 @@ R"rawliteral(
       <div class="field"><label>Ride rotate</label><div class="in"><input type="number" id="rot_int" min="3" max="300" step="1" required><span class="unit">sec</span></div></div>
       <div class="field"><label>Closed-park display</label><div class="in"><input type="number" id="closed_int" min="5" max="300" step="1" required><span class="unit">sec</span></div></div>
       <div class="field"><label>Clock update</label><div class="in"><input type="number" id="time_int" min="10" max="600" step="1" required><span class="unit">sec</span></div></div>
+      <div class="field"><label>Startup screen</label><div class="in"><input type="number" id="splash_int" min="2" max="60" step="1" required><span class="unit">sec</span></div></div>
     </div>
   </div>
 
@@ -577,6 +578,7 @@ window.addEventListener('DOMContentLoaded',async()=>{
     $('rot_int').value=cfg.rotateInterval;
     $('closed_int').value=cfg.closedParkDisplayTime;
     $('time_int').value=cfg.timeUpdateInterval;
+    $('splash_int').value=cfg.startupSplashDuration;
     if(typeof cfg.brightness==='number'){$('brt').value=cfg.brightness;$('brtVal').textContent=cfg.brightness;}
     $('qt_en').checked=!!cfg.quietEnabled;
     if(cfg.quietStart)$('qt_sta').value=cfg.quietStart;
@@ -729,7 +731,7 @@ async function saveConfig(event){event.preventDefault();saveCurrentRideFilterSta
   const enabledParks=allParks.filter(p=>p.enabled).map(p=>({id:p.id,name:p.name}));
   const rideFilters={};for(const park of enabledParks){const cached=rideFilterCache[park.id];if(cached===undefined)continue;rideFilters[park.id]=(cached&&cached.length>0)?cached:null;}
   const rideFavorites={};for(const park of enabledParks){const f=favCache[park.id];if(f===undefined)continue;rideFavorites[park.id]=(f&&f.length>0)?f:null;}
-  const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),enabledParks,rideFilters,rideFavorites,
+  const body={apiRefreshInterval:parseInt($('api_int').value),rotateInterval:parseInt($('rot_int').value),closedParkDisplayTime:parseInt($('closed_int').value),timeUpdateInterval:parseInt($('time_int').value),startupSplashDuration:parseInt($('splash_int').value),enabledParks,rideFilters,rideFavorites,
     brightness:parseInt($('brt').value),quietEnabled:$('qt_en').checked,quietStart:$('qt_sta').value||'22:00',quietEnd:$('qt_end').value||'07:00',quietBrightness:parseInt($('qt_brt').value),ledEnabled:$('led_en').checked,flipScreen:$('flip_scr').checked,deviceTimezone:$('dev_tz').value,colorPalette:selectedPal,customPalette:{hdr:customPal.h,accent:customPal.p,panel:customPal.a},waitThresholds:readWaitThresholds(),waitColors:readWaitColors(),
     rideOptions:{sortMode:parseInt($('sortMode').value),favoritesFirst:$('favFirst').checked,skipClosed:$('skipClosed').checked,minWait:parseInt($('minWait').value)||0}};
   try{const res=await fetch('/api/config',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -770,6 +772,7 @@ async function importConfig(input){const file=input.files[0];input.value='';if(!
   const body={apiRefreshInterval:cfg.apiRefreshInterval,rotateInterval:cfg.rotateInterval,
     closedParkDisplayTime:cfg.closedParkDisplayTime,timeUpdateInterval:cfg.timeUpdateInterval,
     enabledParks:cfg.enabledParks.map(p=>({id:p.id,name:p.name})),rideFilters,rideFavorites};
+  if(typeof cfg.startupSplashDuration==='number')body.startupSplashDuration=cfg.startupSplashDuration;
   // Newer fields ride along when present (older exports simply omit them).
   if(typeof cfg.brightness==='number')body.brightness=cfg.brightness;
   if(typeof cfg.quietEnabled==='boolean'){body.quietEnabled=cfg.quietEnabled;
@@ -995,6 +998,7 @@ void ConfigWebServer::handleApiConfig() {
   doc["rotateInterval"]        = cfg.rotateInterval / 1000;
   doc["closedParkDisplayTime"] = cfg.closedParkDisplayTime / 1000;
   doc["timeUpdateInterval"]    = cfg.timeUpdateInterval / 1000;
+  doc["startupSplashDuration"] = cfg.startupSplashDuration / 1000;
   JsonArray ep = doc.createNestedArray("enabledParks");
   for (size_t i = 0; i < cfg.enabledParkIds.size(); i++) {
     JsonObject p = ep.createNestedObject();
@@ -1065,6 +1069,10 @@ void ConfigWebServer::handleSaveConfig() {
   unsigned long rotate     = (unsigned long)((int)doc["rotateInterval"]     * 1000UL);
   unsigned long closedPark = (unsigned long)((int)doc["closedParkDisplayTime"] * 1000UL);
   unsigned long timeUpdate = (unsigned long)((int)doc["timeUpdateInterval"] * 1000UL);
+  // Missing (older export files don't have it) keeps the current value.
+  unsigned long startupSplash = doc.containsKey("startupSplashDuration")
+      ? (unsigned long)((int)doc["startupSplashDuration"] * 1000UL)
+      : _cfgMgr.getConfig().startupSplashDuration;
   if (apiRefresh < 30000)   apiRefresh = 30000;
   if (apiRefresh > 3600000) apiRefresh = 3600000;
   if (rotate     < 3000)    rotate     = 3000;
@@ -1073,7 +1081,9 @@ void ConfigWebServer::handleSaveConfig() {
   if (closedPark > 300000)  closedPark = 300000;
   if (timeUpdate < 10000)   timeUpdate = 10000;
   if (timeUpdate > 600000)  timeUpdate = 600000;
-  _cfgMgr.saveTimings(apiRefresh, rotate, closedPark, timeUpdate);
+  if (startupSplash < 2000)  startupSplash = 2000;
+  if (startupSplash > 60000) startupSplash = 60000;
+  _cfgMgr.saveTimings(apiRefresh, rotate, closedPark, timeUpdate, startupSplash);
   FEED_WDT();
 
   JsonArray parksArr = doc["enabledParks"].as<JsonArray>();

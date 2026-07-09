@@ -57,7 +57,9 @@ constexpr unsigned long DATA_RETRY_INTERVAL     = 30000UL;
 constexpr int MAX_RIDES = 80;
 
 // ----------- Startup -----------
-constexpr unsigned long STARTUP_SPLASH_DURATION = 10000UL;
+// Startup splash duration ("Connected!" + IP) is now user-configurable —
+// see RuntimeConfig::startupSplashDuration / DEFAULT_STARTUP_SPLASH_DURATION
+// in configmanager.h.
 constexpr unsigned long WIFI_CONNECT_TIMEOUT_MS = 30000UL;
 
 // ----------- Loop task watchdog -----------

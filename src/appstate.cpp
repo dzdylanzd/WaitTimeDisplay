@@ -200,7 +200,7 @@ void AppStateManager::tickStartupInfo(unsigned long now) {
     _display.showStartupInfo(WiFi.localIP().toString());
     _startupScreenShown = true;
   }
-  if (now - _stateEnterTime >= STARTUP_SPLASH_DURATION) {
+  if (now - _stateEnterTime >= _cfgStartupSplashDuration) {
     _startupScreenShown = false;
     const RuntimeConfig& cfg = _cfg.getConfig();
     if (cfg.enabledParkIds.size() > 0) {
@@ -734,6 +734,7 @@ void AppStateManager::reloadRuntimeConfig() {
   _cfgRotateInterval        = cfg.rotateInterval;
   _cfgClosedParkDisplayTime = cfg.closedParkDisplayTime;
   _cfgTimeUpdateInterval    = cfg.timeUpdateInterval;
+  _cfgStartupSplashDuration = cfg.startupSplashDuration;
 }
 
 // Restart the park cycle from the first configured park. Called at startup
@@ -855,7 +856,7 @@ void AppStateManager::onButtonEvent(ButtonEvent ev) {
   // ride cycle, or the no-parks screen) on this same loop iteration.
   if (_state == SystemState::STARTUP_INFO &&
       (ev == ButtonEvent::Short || ev == ButtonEvent::Long)) {
-    _stateEnterTime = millis() - STARTUP_SPLASH_DURATION;
+    _stateEnterTime = millis() - _cfgStartupSplashDuration;
     return;
   }
 

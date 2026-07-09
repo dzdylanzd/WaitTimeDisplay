@@ -63,6 +63,7 @@ void ConfigManager::load() {
   _config.rotateInterval        = _prefs.getULong("rot_int",    DEFAULT_ROTATE_INTERVAL);
   _config.closedParkDisplayTime = _prefs.getULong("closed_int", DEFAULT_CLOSED_PARK_DISPLAY_TIME);
   _config.timeUpdateInterval    = _prefs.getULong("time_int",   DEFAULT_TIME_UPDATE_INTERVAL);
+  _config.startupSplashDuration = _prefs.getULong("splash_int", DEFAULT_STARTUP_SPLASH_DURATION);
   String parksJson              = _prefs.getString("enabled_pks", "");
 
   _config.brightness        = (uint8_t)_prefs.getInt("brt", 100);
@@ -110,17 +111,20 @@ void ConfigManager::load() {
 void ConfigManager::saveTimings(unsigned long apiRefresh,
                                  unsigned long rotate,
                                  unsigned long closedPark,
-                                 unsigned long timeUpdate) {
+                                 unsigned long timeUpdate,
+                                 unsigned long startupSplash) {
   _prefs.begin(NVS_NAMESPACE, false);
   _prefs.putULong("api_int",    apiRefresh);
   _prefs.putULong("rot_int",    rotate);
   _prefs.putULong("closed_int", closedPark);
   _prefs.putULong("time_int",   timeUpdate);
+  _prefs.putULong("splash_int", startupSplash);
   _prefs.end();
   _config.apiRefreshInterval    = apiRefresh;
   _config.rotateInterval        = rotate;
   _config.closedParkDisplayTime = closedPark;
   _config.timeUpdateInterval    = timeUpdate;
+  _config.startupSplashDuration = startupSplash;
 }
 
 void ConfigManager::saveEnabledParks(const String& parksJson) {

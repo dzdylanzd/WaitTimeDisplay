@@ -122,6 +122,7 @@ private:
   unsigned long _cfgRotateInterval        = DEFAULT_ROTATE_INTERVAL;
   unsigned long _cfgClosedParkDisplayTime = DEFAULT_CLOSED_PARK_DISPLAY_TIME;
   unsigned long _cfgTimeUpdateInterval    = DEFAULT_TIME_UPDATE_INTERVAL;
+  unsigned long _cfgStartupSplashDuration = DEFAULT_STARTUP_SPLASH_DURATION;
 
   int          _parkLoadFailures  = 0;
   // Self-healing for the "every fetch fails while WiFi still claims to be

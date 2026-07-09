@@ -10,10 +10,11 @@
 #include "config.h"
 
 // ----------- Timing defaults (ms) -----------
-#define DEFAULT_API_REFRESH_INTERVAL    900000UL  // 15 min
+#define DEFAULT_API_REFRESH_INTERVAL     900000UL  // 15 min
 #define DEFAULT_ROTATE_INTERVAL           10000UL  // 10 s
 #define DEFAULT_CLOSED_PARK_DISPLAY_TIME  20000UL  // 20 s
 #define DEFAULT_TIME_UPDATE_INTERVAL      20000UL  // 20 s (clock shows HH:MM)
+#define DEFAULT_STARTUP_SPLASH_DURATION   10000UL  // 10 s ("Connected!" + IP)
 
 // Ride sort order on the device (RuntimeConfig::sortMode)
 #define SORT_MODE_API_ORDER  0
@@ -48,6 +49,7 @@ struct RuntimeConfig {
   unsigned long rotateInterval        = DEFAULT_ROTATE_INTERVAL;
   unsigned long closedParkDisplayTime = DEFAULT_CLOSED_PARK_DISPLAY_TIME;
   unsigned long timeUpdateInterval    = DEFAULT_TIME_UPDATE_INTERVAL;
+  unsigned long startupSplashDuration = DEFAULT_STARTUP_SPLASH_DURATION;
 
   std::vector<String> enabledParkIds;   // dashed themeparks.wiki UUIDs
   std::vector<String> enabledParkNames;
@@ -98,7 +100,8 @@ public:
   void saveTimings(unsigned long apiRefresh,
                    unsigned long rotate,
                    unsigned long closedPark,
-                   unsigned long timeUpdate);
+                   unsigned long timeUpdate,
+                   unsigned long startupSplash);
 
   void saveEnabledParks(const String& parksJson);
 

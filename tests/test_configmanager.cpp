@@ -183,12 +183,13 @@ TEST_CASE("hasEnabledParks: false when empty, true after setting") {
 
 TEST_CASE("saveTimings: values reflected in getConfig immediately") {
     ConfigManager mgr;
-    mgr.saveTimings(120000, 15000, 25000, 45000);
+    mgr.saveTimings(120000, 15000, 25000, 45000, 15000);
     const auto& cfg = mgr.getConfig();
     CHECK(cfg.apiRefreshInterval    == 120000);
     CHECK(cfg.rotateInterval        == 15000);
     CHECK(cfg.closedParkDisplayTime == 25000);
     CHECK(cfg.timeUpdateInterval    == 45000);
+    CHECK(cfg.startupSplashDuration == 15000);
 }
 
 // ── saveDisplaySettings ───────────────────────────────────────────────────────
@@ -375,7 +376,7 @@ TEST_CASE("applyRideSelections: NVS-full failure after a prior park's success is
 
 TEST_CASE("load: saved settings survive a reload from Preferences") {
     ConfigManager mgr = makeBooted();
-    mgr.saveTimings(60000, 5000, 15000, 30000);
+    mgr.saveTimings(60000, 5000, 15000, 30000, 12000);
     mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false, true,
                             "Europe/Amsterdam");
     mgr.saveRideOptions(SORT_MODE_WAIT_DESC, false, true, 10);
@@ -391,6 +392,7 @@ TEST_CASE("load: saved settings survive a reload from Preferences") {
     const auto& cfg = mgr.getConfig();
     CHECK(cfg.apiRefreshInterval == 60000);
     CHECK(cfg.rotateInterval     == 5000);
+    CHECK(cfg.startupSplashDuration == 12000);
     CHECK(cfg.brightness         == 55);
     CHECK(cfg.quietHoursEnabled  == true);
     CHECK(cfg.quietStartMin      == 20 * 60);
@@ -436,7 +438,7 @@ TEST_CASE("migration: pre-v2 park/ride keys are wiped, other settings survive") 
     }
     mgr.saveDisplaySettings(55, true, 20 * 60, 8 * 60, 25, false, true,
                             "Europe/Amsterdam");
-    mgr.saveTimings(60000, 5000, 15000, 30000);
+    mgr.saveTimings(60000, 5000, 15000, 30000, 10000);
 
     mgr.load();   // first boot on the new firmware → migration runs
 
@@ -483,7 +485,7 @@ TEST_CASE("migration: runs only once — v3 config is left alone") {
 
 TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     ConfigManager mgr = makeBooted();
-    mgr.saveTimings(120000, 15000, 25000, 45000);
+    mgr.saveTimings(120000, 15000, 25000, 45000, 5000);
     mgr.saveEnabledParks(R"([{"id":")" P1 R"(","name":"Park"}])");
     REQUIRE(applySel(mgr, R"({")" P1 R"(":["r10","r20"]})",
                           R"({")" P1 R"(":["r10"]})", {P1}));
@@ -505,6 +507,7 @@ TEST_CASE("factoryReset: wipes parks/filters/timings back to defaults") {
     CHECK(cfg.rotateInterval        == DEFAULT_ROTATE_INTERVAL);
     CHECK(cfg.closedParkDisplayTime == DEFAULT_CLOSED_PARK_DISPLAY_TIME);
     CHECK(cfg.timeUpdateInterval    == DEFAULT_TIME_UPDATE_INTERVAL);
+    CHECK(cfg.startupSplashDuration == DEFAULT_STARTUP_SPLASH_DURATION);
     CHECK(mgr.isRideEnabled(P1, "r99"));  // filter gone — everything enabled
     CHECK(cfg.brightness        == 100);
     CHECK(cfg.quietHoursEnabled == false);
