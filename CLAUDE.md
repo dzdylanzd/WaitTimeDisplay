@@ -294,7 +294,7 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no SDL. HTTP responses are preset via `tests/HTTPClient.h` (MockHTTP map).
 
-### What is tested (145 test cases, 762 assertions)
+### What is tested (147 test cases, 793 assertions)
 
 **`test_configmanager.cpp`** — ConfigManager  
 - `parseEnabledParks`: valid JSON / empty / malformed / non-array / invalid IDs  
