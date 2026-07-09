@@ -294,7 +294,7 @@ When parks are saved via the browser, `cfgserver` sets `isConfigUpdated()` and t
 
 Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no SDL. HTTP responses are preset via `tests/HTTPClient.h` (MockHTTP map).
 
-### What is tested (142 test cases, 673 assertions)
+### What is tested (145 test cases, 762 assertions)
 
 **`test_configmanager.cpp`** — ConfigManager  
 - `parseEnabledParks`: valid JSON / empty / malformed / non-array / invalid IDs  
@@ -325,6 +325,16 @@ Tests use **doctest** (header-only, `tests/doctest.h`). No hardware, no LVGL, no
 **`test_ridefilter.cpp`** — `applyDisplayOptions`: skip-closed (Down/Refurbishment hidden too, finished shows dropped), min-wait (boundary inclusive, attractions only), revert-if-empty, empty/single lists, closed favorite dropped, wait-desc sort (stable, non-operating last), favorites-first, combinations  
 
 **`test_button.cpp`** — Button state machine: debounce (press and release bounces), short press, long press (fires once while held), 10 s HoldWarning, HoldCancel on release, 20 s HoldReset (release swallowed), skip-past-20 s polling, back-to-back presses  
+
+**`test_versioncompare.cpp`** — `parseVersion`/`isNewerVersion`: dotted numeric parsing (leading `v`, `-rc1` suffixes, up to 4 components), newer/older/equal comparisons, malformed input  
+
+**`test_otaupdater_json.cpp`** — `extractLatestRelease`: tag + asset URL parse, missing/malformed fields, no matching asset  
+
+**`test_tzhelper.cpp`** — `TZ_TABLE`/`lookupPosixTZ`: table is sorted case-insensitively (binary-search precondition), every entry round-trips, case-insensitive lookup, unknown zone → nullptr; `getMinutesOfDayInTz` for a known vs. unmapped zone  
+
+**`test_cfgserver.cpp`** — cfgserver helpers: `hhmmToMinutes`, `parseHexColor`/`hexColor` round-trip, `jsonEscape`, `countryForDestination`  
+
+A separate `queuewatch_live_tests` executable (`test_live_api.cpp`, **not** part of the default test run) hits the real api.themeparks.wiki over the network and cross-checks `fetchRideData()` against every live park's raw JSON — run manually when validating parser changes against production data, not in CI.
 
 ### Sub-scripts in `tests/`
 
