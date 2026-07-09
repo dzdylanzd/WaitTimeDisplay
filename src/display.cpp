@@ -910,7 +910,11 @@ void DisplayController::showNoData(NoDataReason reason, const String& ipAddress)
 
     switch (reason) {
     case NoDataReason::NO_PARKS:
-        lv_obj_set_style_text_color(_lblStTitle, C_PARK_TXT, LV_PART_MAIN);
+        // Amber (not the "Connected!" splash's green) so this action-needed
+        // screen doesn't read as a continuation of that one at a glance —
+        // they follow each other directly at boot when no parks are set up
+        // yet, and both show the IP in the same layout.
+        lv_obj_set_style_text_color(_lblStTitle, T_AMBER.accent, LV_PART_MAIN);
         lv_label_set_text(_lblStTitle, LV_SYMBOL_SETTINGS "  No Parks Set");
         lv_obj_set_style_text_color(_lblStSub, C_BODY_TXT, LV_PART_MAIN);
         lv_label_set_text(_lblStSub, "Configure parks to get started");
