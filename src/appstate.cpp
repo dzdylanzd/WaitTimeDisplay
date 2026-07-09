@@ -111,6 +111,18 @@ void AppStateManager::update() {
     return;
   }
 
+  // "Install update" only ever starts a download from WAIT_TIME_CYCLE (see
+  // tickWaitTimeCycle) — connectivity isn't guaranteed in any other state.
+  // Drain a request made while the device is elsewhere so it doesn't sit
+  // forever reporting "downloading" with no progress; tell the user instead.
+  if (_state != SystemState::WAIT_TIME_CYCLE) {
+    String unusedAssetUrl;
+    if (_webServer.consumeOtaStartRequest(unusedAssetUrl)) {
+      _webServer.setOtaStatus(OtaUiState::Error, 0,
+                              "Device not ready - wait for normal operation and try again");
+    }
+  }
+
   switch (_state) {
     case SystemState::WIFI_CONFIG_PORTAL: tickWifiConfigPortal();        break;
     case SystemState::WIFI_CONNECTING:    tickWifiConnecting(now);       break;
