@@ -16,11 +16,22 @@ class Preferences {
 public:
     static void resetMock() { store().clear(); }
 
+    // Test hook: make the Nth putString() call from now (1 = the very next
+    // call) fail (return 0, matching real NVS behaviour on a full partition)
+    // without writing. 0 = disabled. Lets tests exercise partial-write /
+    // storage-full handling deterministically.
+    static int& failPutStringOnCall() { static int n = 0; return n; }
+
     bool begin(const char* ns, bool = false) { _ns = &store()[ns]; return true; }
     void end() {}
 
     // Real Preferences returns the number of bytes written (0 = failure).
     size_t putString(const char* k, const String& v) {
+        int& fail = failPutStringOnCall();
+        if (fail > 0) {
+            fail--;
+            if (fail == 0) return 0;
+        }
         (*_ns)[k] = v.c_str();
         return v.length();
     }

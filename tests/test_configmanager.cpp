@@ -344,6 +344,33 @@ TEST_CASE("applyRideSelections: 12 parks with 60-ride filters all fit") {
                             "0000000b11112222333344444444" "003b"));
 }
 
+TEST_CASE("applyRideSelections: NVS-full failure after a prior park's success is reported, not silently lost") {
+    ConfigManager mgr = makeBooted();
+    // Park 1 succeeds first (kv iteration order in ArduinoJson follows
+    // insertion order), then park 2's write is forced to fail like a full
+    // NVS partition would.
+    REQUIRE(applySel(mgr,
+        R"({")" P1 R"(":["aaaaaaaa111122223333444444440001"]})", nullptr, {P1, P2}));
+    CHECK(mgr.isRideEnabled(P1, "aaaaaaaa111122223333444444440001"));
+
+    DynamicJsonDocument fd(16384);
+    JsonObject root = fd.to<JsonObject>();
+    root.createNestedArray(P1).add("aaaaaaaa111122223333444444440009");
+    root.createNestedArray(P2).add("bbbbbbbb111122223333444444440001");
+    std::vector<String> keep = { String(P1), String(P2) };
+    String err;
+    Preferences::failPutStringOnCall() = 2;   // 1st write succeeds, 2nd fails
+    bool ok = mgr.applyRideSelections(fd.as<JsonObjectConst>(),
+                                      JsonObjectConst(), keep, err);
+    Preferences::failPutStringOnCall() = 0;
+    CHECK_FALSE(ok);
+    CHECK(err.indexOf("already saved") >= 0);
+    // P1 (inserted first, so written first) kept its new selection from this
+    // same call even though the overall call reported failure.
+    CHECK(mgr.isRideEnabled(P1, "aaaaaaaa111122223333444444440009"));
+    CHECK_FALSE(mgr.isRideEnabled(P1, "aaaaaaaa111122223333444444440001"));
+}
+
 // ── load() persistence round-trip ─────────────────────────────────────────────
 
 TEST_CASE("load: saved settings survive a reload from Preferences") {

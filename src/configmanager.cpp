@@ -156,6 +156,7 @@ bool ConfigManager::applyRideSelections(JsonObjectConst filters,
   _prefs.begin(NVS_NAMESPACE, false);
 
   bool ok = true;
+  bool wroteAny = false;
   // Two passes over (kind, incoming-object): identical handling.
   const char kinds[2] = { 'f', 'v' };
   JsonObjectConst objs[2] = { filters, favorites };
@@ -189,10 +190,13 @@ bool ConfigManager::applyRideSelections(JsonObjectConst filters,
         break;
       }
       if (_prefs.putString(key.c_str(), sel) != sel.length()) {
-        outError = "Device storage is full - reduce per-ride filters";
+        outError = wroteAny
+            ? "Device storage is full - some selections were already saved before this failure, reduce per-ride filters"
+            : "Device storage is full - reduce per-ride filters";
         ok = false;
         break;
       }
+      wroteAny = true;
       bool indexed = false;
       for (size_t i = 0; i < _selectionIndex.size(); i++)
         if (_selectionIndex[i] == parkId) { indexed = true; break; }
