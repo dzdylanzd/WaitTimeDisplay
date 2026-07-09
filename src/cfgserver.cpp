@@ -1010,8 +1010,8 @@ void ConfigWebServer::handleApiConfig() {
   doc["colorPalette"]    = cfg.colorPalette;
   JsonObject cp = doc.createNestedObject("customPalette");
   cp["hdr"]    = hexColor(cfg.customHdr);
-  cp["accent"] = hexColor(cfg.customPanel);
-  cp["panel"]  = hexColor(cfg.customAccent);
+  cp["accent"] = hexColor(cfg.customAccent);
+  cp["panel"]  = hexColor(cfg.customPanel);
 
   JsonArray wt = doc.createNestedArray("waitThresholds");
   wt.add(cfg.waitTh1); wt.add(cfg.waitTh2); wt.add(cfg.waitTh3);
