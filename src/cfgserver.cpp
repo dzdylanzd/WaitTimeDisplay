@@ -16,6 +16,10 @@ static inline void feedWdtIfSubscribed() {
 #define FEED_WDT() ((void)0)
 #endif
 
+// Generous upper bound on a /api/save-config body: a 12-park, fully-filtered
+// save (see test_configmanager.cpp) is roughly 50 KB of raw JSON.
+static constexpr size_t SAVE_CONFIG_MAX_BODY = 256 * 1024;
+
 static String minutesToHHMM(int minutes) {
   char buf[6];
   snprintf(buf, sizeof(buf), "%02d:%02d", (minutes / 60) % 24, minutes % 60);
@@ -404,7 +408,7 @@ R"rawliteral(
   </div>
 </div>
 <script>
-let otaAvailableVersion=null, otaPolling=null;
+let otaAvailableVersion=null, otaPolling=null, otaPollFailCount=0;
 async function otaCheck(btn){
   btn.disabled=true;btn.innerHTML='<span class="spinner"></span> Checking...';
   const line=$('otaStatusLine');
@@ -428,18 +432,25 @@ async function otaInstall(btn){
   try{const res=await fetch('/api/ota/start',{method:'POST'});const r=await res.json();
     if(!r.success){toast('Error: '+(r.error||'unknown'),'error');btn.disabled=false;$('otaCheckBtn').disabled=false;return;}
   }catch(e){toast('Failed to start update','error');btn.disabled=false;$('otaCheckBtn').disabled=false;return;}
-  otaPolling=setInterval(otaPollStatus,2000);}
+  otaPollFailCount=0;otaPolling=setInterval(otaPollStatus,2000);}
 
 async function otaPollStatus(){
   const line=$('otaStatusLine');
   try{const res=await fetch('/api/ota/status');const r=await res.json();
+    otaPollFailCount=0;
     if(r.state==='downloading')line.textContent='Downloading... '+r.progressPct+'%';
     else if(r.state==='installing')line.textContent='Installing update...';
     else if(r.state==='success'){line.textContent='Update installed. Restarting...';clearInterval(otaPolling);}
     else if(r.state==='error'){line.textContent='Update failed: '+r.message;clearInterval(otaPolling);
       $('otaInstallBtn').disabled=false;$('otaCheckBtn').disabled=false;}
-  }catch(e){/* device likely restarting; stop polling */clearInterval(otaPolling);
-    line.textContent='Update installed. Restarting...';}}
+  }catch(e){
+    // A single failed poll is more likely a transient client-side network
+    // blip than the device actually rebooting (that only happens once flash
+    // has fully finished) — only declare success after several in a row.
+    otaPollFailCount++;
+    if(otaPollFailCount>=3){clearInterval(otaPolling);
+      line.textContent='Update installed. Restarting...';}
+    else line.textContent='Connection interrupted, retrying...';}}
 
 async function deviceNext(what,btn){
   btn.disabled=true;
@@ -1032,10 +1043,16 @@ void ConfigWebServer::handleSaveConfig() {
   if (!_server.hasArg("plain")) {
     _server.send(400, "application/json", "{\"success\":false,\"error\":\"No body\"}"); return;
   }
+  const String& body = _server.arg("plain");
+  // Sanity cap well above any legitimate save (12 fully-filtered parks is
+  // ~50 KB of raw JSON) so a malicious/corrupt oversized body can't trigger
+  // an unbounded heap allocation on the next line.
+  if (body.length() > SAVE_CONFIG_MAX_BODY) {
+    _server.send(413, "application/json", "{\"success\":false,\"error\":\"Request too large\"}"); return;
+  }
   // Sized off the actual body: a many-parks, fully-filtered save can exceed
   // any fixed guess, and ArduinoJson needs roughly 2x the raw JSON on 64-bit
   // platforms (irrelevant on-device, but the sim build hit this).
-  const String& body = _server.arg("plain");
   DynamicJsonDocument doc(body.length() * 3 + 2048);
   if (deserializeJson(doc, body)) {
     _server.send(400, "application/json", "{\"success\":false,\"error\":\"JSON parse error\"}"); return;
@@ -1134,8 +1151,8 @@ void ConfigWebServer::handleSaveConfig() {
     JsonObject cp = doc["customPalette"].as<JsonObject>();
     if (!cp.isNull()) {
       uint32_t ch  = parseHexColor(cp["hdr"].as<const char*>(),    cur.customHdr);
-      uint32_t ca  = parseHexColor(cp["accent"].as<const char*>(), cur.customPanel);
-      uint32_t cpn = parseHexColor(cp["panel"].as<const char*>(),  cur.customAccent);
+      uint32_t ca  = parseHexColor(cp["accent"].as<const char*>(), cur.customAccent);
+      uint32_t cpn = parseHexColor(cp["panel"].as<const char*>(),  cur.customPanel);
       _cfgMgr.saveCustomPalette(ch, ca, cpn);
     }
 
