@@ -63,6 +63,14 @@ void Lvgl_Init(void) {
         .name     = "lvgl_tick"
     };
     esp_timer_handle_t tick_timer = nullptr;
-    esp_timer_create(&tick_timer_args, &tick_timer);
-    esp_timer_start_periodic(tick_timer, LVGL_TICK_MS * 1000ULL); // µs
+    esp_err_t err = esp_timer_create(&tick_timer_args, &tick_timer);
+    if (err == ESP_OK) {
+        err = esp_timer_start_periodic(tick_timer, LVGL_TICK_MS * 1000ULL); // µs
+    }
+    if (err != ESP_OK) {
+        // lv_tick_inc() will never be called: LVGL's clock freezes and the
+        // UI silently stops animating/timing out. No good recovery short of
+        // a reboot, but at least surface it for anyone on the serial monitor.
+        Serial.printf("[lvgl] tick timer failed to start (err %d) - display will hang\n", (int)err);
+    }
 }
